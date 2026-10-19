@@ -14,7 +14,32 @@ import {
   type BudgetState,
 } from '../services/budget';
 
+/** 送给模型的最大轮数（超出部分走压缩） */
 const MAX_TURNS = 14;
+/** 超过这个条数就压缩一次 */
+const COMPACT_THRESHOLD = 30;
+/** 压缩后保留最近的条数 */
+const KEEP_RECENT = 16;
+const HISTORY_KEY = 'fatfish.chat.history.v1';
+
+function loadHistory(): ChatMessage[] {
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? (arr as ChatMessage[]).filter((m) => m.role !== 'system') : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveHistory(list: ChatMessage[]): void {
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(list.slice(-80)));
+  } catch {
+    /* 存不下就算了 */
+  }
+}
 
 /** 留给输出的余量：没这个数就别开口了 */
 const MIN_OUTPUT_TOKENS = 300;
@@ -30,6 +55,8 @@ interface UsePetChatOptions {
   onBudgetChange: (next: BudgetState) => void;
   onMood: (mood: string) => void;
   onRemember: (content: string) => void;
+  /** 压缩出来的对话摘要，交给外部存进事件记忆 */
+  onCompact: (summary: string) => void;
   /** 预算不够时回调，由外部决定怎么撒娇 */
   onHungry: () => void;
 }
@@ -56,9 +83,11 @@ export function usePetChat({
   onBudgetChange,
   onMood,
   onRemember,
+  onCompact,
   onHungry,
 }: UsePetChatOptions) {
-  const historyRef = useRef<ChatMessage[]>([]);
+  // 从本地恢复，重启之后还能接上上次的话题
+  const historyRef = useRef<ChatMessage[]>(loadHistory());
   const abortRef = useRef<AbortController | null>(null);
   const [busy, setBusy] = useState(false);
   const [liveText, setLiveText] = useState('');
@@ -130,6 +159,58 @@ export function usePetChat({
     [budget, config, onBudgetChange],
   );
 
+  /**
+   * 上下文压缩：把最早的一段对话压成一句"我们聊过什么"，存进事件记忆。
+   * 不做这个的话，超出窗口的部分是被直接扔掉的——那不叫记忆。
+   */
+  const compact = useCallback(async (): Promise<void> => {
+    const hist = historyRef.current;
+    if (hist.length <= COMPACT_THRESHOLD) return;
+
+    const old = hist.slice(0, hist.length - KEEP_RECENT);
+
+    // 先裁历史再摘要：摘要失败也不能让窗口一直爆着
+    historyRef.current = hist.slice(-KEEP_RECENT);
+    saveHistory(historyRef.current);
+
+    const transcript = old
+      .map((m) => `${m.role === 'user' ? '他' : '你'}：${m.content.slice(0, 200)}`)
+      .join('" + BS + "n');
+
+    try {
+      const payload: ChatMessage[] = [
+        {
+          role: 'system',
+          content: `（系统旁白）把下面这段对话压成一两句，只保留有价值的东西：
+- 关于他的新信息（在做什么、在意什么、情绪状态、约定）
+- 你们之间发生的关键事（分歧、玩笑、承诺）
+不要复述原话，不要写成"用户说"这种格式，不要评价。输出一句话，不超过 60 字。`,
+        },
+        { role: 'user', content: transcript.slice(0, 3000) },
+      ];
+
+      let acc = '';
+      for await (const ev of streamChat(payload, config)) {
+        if (ev.type === 'delta' && ev.content) acc += ev.content;
+        else if (ev.type === 'error' || ev.type === 'done') break;
+      }
+
+      const summary = acc.trim().slice(0, 120);
+      (window as unknown as Record<string, unknown>).__compactDebug = {
+        accLen: acc.length,
+        head: acc.slice(0, 120),
+        summary,
+        at: Date.now(),
+      };
+      if (summary) onCompact(summary);
+    } catch (err) {
+      (window as unknown as Record<string, unknown>).__compactDebug = {
+        error: err instanceof Error ? err.message : String(err),
+        at: Date.now(),
+      };
+    }
+  }, [config, onCompact]);
+
   const send = useCallback(
     async (input: string): Promise<ChatResult> => {
       const text = input.trim();
@@ -182,6 +263,9 @@ export function usePetChat({
       if (mood) onMood(mood);
       if (remember) onRemember(remember);
 
+      saveHistory(historyRef.current);
+      void compact();
+
       const reply = clean || result.raw || '（想了半天，什么也没说）';
       return {
         text: result.starved ? reply + STARVED_SUFFIX : reply,
@@ -189,7 +273,7 @@ export function usePetChat({
         starved: result.starved,
       };
     },
-    [config, memories, diary, chatEvents, onChatEvent, impressions, run, onMood, onRemember, onHungry],
+    [config, memories, diary, chatEvents, onChatEvent, impressions, onCompact, run, onMood, onRemember, onHungry, compact],
   );
 
   /**
@@ -217,11 +301,12 @@ export function usePetChat({
       if (remember) onRemember(remember);
       return !result.starved ? text || null : (text || '') + STARVED_SUFFIX;
     },
-    [config, memories, diary, chatEvents, onChatEvent, impressions, run, onMood, onRemember, onHungry],
+    [config, memories, diary, chatEvents, onChatEvent, impressions, onCompact, run, onMood, onRemember, onHungry, compact],
   );
 
   const clear = useCallback(() => {
     historyRef.current = [];
+    saveHistory([]);
   }, []);
 
   return { send, stop, clear, speakProactively, busy, liveText };

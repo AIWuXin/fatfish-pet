@@ -134,6 +134,10 @@ export default function App() {
     chatEvents,
     onChatEvent: (text) => setChatEvents(addChatEvent(text)),
     impressions,
+    onCompact: (summary) => {
+      // 压缩出来的对话摘要进事件记忆，以后能召回
+      setChatEvents(addChatEvent(`（聊过）${summary}`));
+    },
     budget,
     onBudgetChange: setBudget,
     onMood,
