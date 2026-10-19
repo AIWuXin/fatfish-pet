@@ -49,6 +49,10 @@ function loadHandled(): Set<number> {
   }
 }
 
+function saveHandled(set: Set<number>): void {
+  localStorage.setItem(HANDLED_KEY, JSON.stringify(Array.from(set).slice(-300)));
+}
+
 function markHandled(id: number): void {
   const set = loadHandled();
   set.add(id);
@@ -182,8 +186,20 @@ export async function handleReplies(
   }
 
   const emotes = await loadEmotes();
-  const handled = loadHandled();
-  const fresh = items.filter((it) => !handled.has(it.id) && it.mid !== selfMid && it.replyContent.trim());
+  let handled = loadHandled();
+  // 旧版本把「通知 id」（16 位）存进了这张表，现在改用 sourceId（12 位 rpid）。
+  // 不迁移的话，历史通知会被当成新的一次性全部重回。
+  if (Array.from(handled).some((n) => String(n).length >= 15)) {
+    handled = new Set(items.map((i) => i.sourceId).filter((n) => n > 0));
+    saveHandled(handled);
+  }
+
+  // 去重键用 sourceId（对方那条回复的 rpid），不用通知 id——
+  // 通知 id 每次拉都可能变，拿它去重会反复回同一条。
+  // 这样同一条回复只回一次，等对方再回一条新的才继续。
+  const fresh = items.filter(
+    (it) => !handled.has(it.sourceId) && it.mid !== selfMid && it.replyContent.trim(),
+  );
   const limit = opts.maxHandle ?? 2;
 
   for (const item of fresh.slice(0, limit)) {
@@ -192,7 +208,7 @@ export async function handleReplies(
 
     if (!composed.text) {
       result.skipped += 1;
-      markHandled(item.id); // 明确不回也记下，免得每轮重复判断
+      markHandled(item.sourceId); // 明确不回也记下，免得每轮重复判断
       continue;
     }
 
@@ -204,7 +220,7 @@ export async function handleReplies(
         result.mood = composed.mood;
         opts.onStatus?.(`回了${item.nickname}一句`);
       }
-      markHandled(item.id);
+      markHandled(item.sourceId);
     } catch {
       /* 发送失败不记，下一轮还能重试 */
     }

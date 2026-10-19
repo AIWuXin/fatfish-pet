@@ -522,7 +522,8 @@ export default function App() {
       const cur = reflectRef.current;
       if (!cur.settings.apiKey) return null;
       const last = Number(localStorage.getItem('fatfish.impressions.at') || 0);
-      if (!force && Date.now() - last < 20 * 3600_000) return null;
+      // 同一个 6 小时内不重复反思，避免反复烧钱
+      if (!force && Date.now() - last < 6 * 3600_000) return null;
 
       const r = await reflect({
         config: cur.settings,
@@ -538,13 +539,15 @@ export default function App() {
     [],
   );
 
-  // 启动 75 秒后反思一次（错开 30 秒那条社交检查）
+  // 反思：启动 3 分钟后看一次，之后每 3 小时看一次（真的跑与否由 6 小时节流决定）
   useEffect(() => {
     if (!settings.apiKey) return;
-    const timer = window.setTimeout(() => {
-      void runReflect(false);
-    }, 75000);
-    return () => window.clearTimeout(timer);
+    const first = window.setTimeout(() => void runReflect(false), 3 * 60_000);
+    const ticker = window.setInterval(() => void runReflect(false), 3 * 3600_000);
+    return () => {
+      window.clearTimeout(first);
+      window.clearInterval(ticker);
+    };
   }, [settings.apiKey, runReflect]);
 
   // 调试出口：CDP 里可以直接触发回复环节

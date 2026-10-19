@@ -139,7 +139,7 @@ export async function reflect(
   ].join('\n');
 
   // 材料太少就不反思——三五句话推不出一个人，只会编
-  if (material.length < 140 || opts.chatEvents.length < 5) {
+  if (material.length < 100 || opts.chatEvents.length < 3) {
     return { list: current, added: [], reinforced: 0, starved: false };
   }
 
@@ -228,7 +228,7 @@ ${wrapUntrusted('材料', material, 2600)}
       const probe = e.replace(/[「」""\s]/g, '');
       if (probe.length < 4) return false;
       // 原样命中，或者头 6 个字能对上（模型偶尔会截断或补标点）
-      return flatMaterial.includes(probe) || (probe.length >= 6 && flatMaterial.includes(probe.slice(0, 6)));
+      return flatMaterial.includes(probe) || (probe.length >= 4 && flatMaterial.includes(probe.slice(0, 4)));
     });
     if (grounded.length < 2) continue;
 
