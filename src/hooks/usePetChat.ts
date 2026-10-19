@@ -13,6 +13,24 @@ import {
   STARVED_SUFFIX,
   type BudgetState,
 } from '../services/budget';
+import {
+  buildMoodBlock,
+  loadMood,
+  markOutburst,
+  onInteraction,
+  onReturn,
+  saveMood,
+  shouldOutburst,
+} from '../services/mood-state';
+import { buildClockBlock, readClock } from '../services/circadian';
+import {
+  buildPendingBlock,
+  duePending,
+  extractPending,
+  loadPending,
+  markAsked,
+  savePending,
+} from '../services/pending';
 
 /** 送给模型的最大轮数（超出部分走压缩） */
 const MAX_TURNS = 14;
@@ -256,6 +274,13 @@ export function usePetChat({
         deep: asksForMemory(text),
       });
 
+      // 心情、时间、惦记的事：每轮现算，不缓存
+      const now = Date.now();
+      const clock = readClock(new Date(now));
+      const moodState = onReturn(loadMood(), now);
+      const outburst = shouldOutburst(moodState, now);
+      const pendingList = loadPending();
+
       const system: ChatMessage = {
         role: 'system',
         content:
@@ -263,8 +288,13 @@ export function usePetChat({
           buildMemoryBlock(memories) +
           buildDiaryBlock(diary) +
           buildRecallBlock(hits) +
-          buildImpressionBlock(impressions),
+          buildImpressionBlock(impressions) +
+          buildClockBlock(clock) +
+          buildMoodBlock(moodState, outburst, now) +
+          buildPendingBlock(pendingList, now),
       };
+
+      const dueNow = duePending(pendingList, now);
       const history = historyRef.current.slice(-MAX_TURNS * 2);
       const payload: ChatMessage[] = [system, ...history, { role: 'user', content: text }];
 
@@ -281,7 +311,24 @@ export function usePetChat({
 
       onChatEvent(text);
 
+      // 这句里有「有时限但没结论」的事就记下来，到点再问
+      const pend = loadPending();
+      const fresh = extractPending(text, pend, Date.now());
+      if (fresh) savePending([fresh, ...pend]);
+
       const { text: clean, mood, remember } = parseReply(result.raw);
+
+      // 真的提到了才算问过。之前是注入就标记，模型没问也记成问过了，
+      // 那次机会就白白浪费，还会一直不提。
+      if (dueNow.length > 0) {
+        const said = clean || result.raw || '';
+        let list = loadPending();
+        for (const p of dueNow) {
+          const key = p.what.slice(0, 2);
+          if (key && said.includes(key)) list = markAsked(list, p.id, Date.now());
+        }
+        savePending(list);
+      }
       historyRef.current = [
         ...historyRef.current,
         { role: 'user', content: text },
@@ -290,6 +337,13 @@ export function usePetChat({
 
       if (mood) onMood(mood);
       if (remember) onRemember(remember);
+
+      // 说上话了，烦消一点、亲近涨一点；刚才要是抱怨过就记一笔，同一场对话不再算旧账
+      const after = Date.now();
+      const before = onReturn(loadMood(), after);
+      let next = onInteraction(before, 'chat', after);
+      if (shouldOutburst(before, after)) next = markOutburst(next, after);
+      saveMood(next);
 
       saveHistory(historyRef.current);
       void compact();
@@ -312,8 +366,17 @@ export function usePetChat({
     async (hint: string): Promise<string | null> => {
       if (!config.apiKey || !config.endpoint || !config.model) return null;
 
+      const nowMs = Date.now();
       const payload: ChatMessage[] = [
-        { role: 'system', content: PERSONA + buildMemoryBlock(memories) + buildDiaryBlock(diary) },
+        {
+          role: 'system',
+          content:
+            PERSONA +
+            buildMemoryBlock(memories) +
+            buildDiaryBlock(diary) +
+            buildClockBlock(readClock(new Date(nowMs))) +
+            buildMoodBlock(onReturn(loadMood(), nowMs), false, nowMs),
+        },
         { role: 'user', content: hint },
       ];
 
@@ -327,6 +390,13 @@ export function usePetChat({
       const { text, mood, remember } = parseReply(result.raw);
       if (mood) onMood(mood);
       if (remember) onRemember(remember);
+
+      // 说上话了，烦消一点、亲近涨一点；刚才要是抱怨过就记一笔，同一场对话不再算旧账
+      const after = Date.now();
+      const before = onReturn(loadMood(), after);
+      let next = onInteraction(before, 'chat', after);
+      if (shouldOutburst(before, after)) next = markOutburst(next, after);
+      saveMood(next);
       return !result.starved ? text || null : (text || '') + STARVED_SUFFIX;
     },
     [config, memories, diary, chatEvents, onChatEvent, impressions, onCompact, run, onMood, onRemember, onHungry, compact],
@@ -337,5 +407,38 @@ export function usePetChat({
     saveHistory([]);
   }, []);
 
-  return { send, stop, clear, speakProactively, busy, liveText };
+  /**
+   * 主动提一件到期的事。
+   *
+   * 不能只等用户先开口——他要是不说话，到期的提醒永远问不出来。
+   * 所以这里由一个定时器驱动：隔了一阵没人搭理，就自己开口问一句。
+   *
+   * 两个克制：
+   *   刚聊完不提（30 分钟内算「正在聊」）
+   *   一次只提一件
+   */
+  const speakPending = useCallback(async (): Promise<string | null> => {
+    const now = Date.now();
+    const moodNow = loadMood();
+    if (now - moodNow.lastInteractionAt < 30 * 60_000) return null;
+
+    const list = loadPending();
+    const due = duePending(list, now);
+    if (due.length === 0) return null;
+
+    const p = due[0];
+    const hint = `（系统旁白，不是他说的）
+你心里一直惦记着他之前讲过的话：「${p.note}」。
+现在他安静了一阵，你主动问一句「${p.what}」怎么样了。
+像忽然想起来那样自然，一两句话就够，别像查岗。`;
+
+    const text = await speakProactively(hint);
+    if (text) {
+      const key = p.what.slice(0, 2);
+      if (key && text.includes(key)) savePending(markAsked(loadPending(), p.id, Date.now()));
+    }
+    return text;
+  }, [speakProactively]);
+
+  return { send, stop, clear, speakProactively, speakPending, busy, liveText };
 }

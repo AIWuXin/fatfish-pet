@@ -367,6 +367,16 @@ export default function App() {
     };
   }, [biliLoggedIn, selfMid, runSocialCheck]);
 
+  // 到期的事主动开口：每 20 分钟看一次，真正该不该提由 speakPending 自己判断
+  useEffect(() => {
+    const ticker = window.setInterval(() => {
+      void chat.speakPending().then((t) => {
+        if (t) say(t, 9000);
+      });
+    }, 20 * 60_000);
+    return () => window.clearInterval(ticker);
+  }, [chat, say]);
+
   browseHandlerRef.current = () => {
     void handleBrowse();
   };
@@ -570,6 +580,7 @@ export default function App() {
   useEffect(() => {
     (window as unknown as Record<string, unknown>).__petSocial = () => runSocialCheck(false);
     (window as unknown as Record<string, unknown>).__petBlocked = () => loadBlocked();
+    (window as unknown as Record<string, unknown>).__petPending = () => chat.speakPending();
     (window as unknown as Record<string, unknown>).__petReflect = () => runReflect(true);
   }, [runSocialCheck, runReflect]);
 
