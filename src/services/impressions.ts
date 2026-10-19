@@ -18,7 +18,7 @@ import { streamChat, type ChatMessage } from './llm';
 import { estimateTokens, recordUsage, remainingTokens, type BudgetState } from './budget';
 import { wrapUntrusted } from './untrusted';
 import type { PetSettings } from './settings';
-import type { ChatEvent } from './recall';
+import { userUtterances, type ChatEvent } from './recall';
 import type { DiaryEntry } from './diary';
 
 export interface Impression {
@@ -31,6 +31,12 @@ export interface Impression {
   confidence: number;
   formedAt: number;
   lastSeenAt: number;
+  /**
+   * 依据标记。早期版本把她的逛站日记也喂进去过，
+   * 推出过「他爱拿鱼的尾巴打比方」这种把她的话算到他头上的印象。
+   * 只认 chat-only，旧的直接作废。
+   */
+  basis: 'chat-only';
 }
 
 const KEY = 'fatfish.impressions.v1';
@@ -48,7 +54,13 @@ export function loadImpressions(): Impression[] {
     const raw = localStorage.getItem(KEY);
     if (!raw) return [];
     const arr = JSON.parse(raw);
-    return Array.isArray(arr) ? (arr as Impression[]) : [];
+    if (!Array.isArray(arr)) return [];
+    // 丢掉没有 basis 的历史数据（那是用错材料生成的），顺手清掉
+    const valid = (arr as Impression[]).filter((i) => i.basis === 'chat-only');
+    if (valid.length !== arr.length) {
+      localStorage.setItem(KEY, JSON.stringify(valid));
+    }
+    return valid;
   } catch {
     return [];
   }
@@ -137,14 +149,21 @@ export async function reflect(
 ): Promise<{ list: Impression[]; added: string[]; reinforced: number; starved: boolean }> {
   const current = decay(loadImpressions());
 
-  const material = [
-    ...opts.chatEvents.slice(0, 40).map((c) => `[${dayLabel(c.at)}] 他说：${c.text}`),
-    ...opts.diary.slice(0, 10).map((d) => `[${dayLabel(d.at)}] 你看了《${d.title}》，评价：${d.thought}`),
-  ].join('\n');
+  // 只用他说过的话。
+  // 她的逛站日记是「她自己」的评价，拿来推断「他喜欢什么」必然张冠李戴
+  // —— 之前就踩过：把她看视频时的感想变成了「他爱拿尾巴打比方」。
+  // ① 她的逛站日记是她自己的评价，拿来推断「他喜欢什么」必然张冠李戴
+  // ② 压缩摘要是第三人称叙述（"他…你…"），混进来会被当成他刚说的话
+  // 两条都踩过：推出过「他爱拿鱼的尾巴打比方」「他调试时连续改13版」。
+  const utterances = userUtterances(opts.chatEvents);
+  const material = utterances
+    .slice(0, 40)
+    .map((c) => `[${dayLabel(c.at)}] 他说：${c.text}`)
+    .join('\n');
 
   // 材料太少就不反思——三五句话推不出一个人，只会编
   // 一条也能开始观察，不设太高门槛
-  if (material.length < 100 || opts.chatEvents.length < 1) {
+  if (material.length < 100 || utterances.length < 1) {
     return { list: current, added: [], reinforced: 0, starved: false };
   }
 
@@ -188,6 +207,12 @@ ${wrapUntrusted('材料', material, 2600)}
   }
   const spent = usage > 0 ? usage : inputCost + estimateTokens(acc);
   if (spent > 0) opts.onBudgetChange(recordUsage(opts.budget, spent));
+
+  (window as unknown as Record<string, unknown>).__reflectDebug = {
+    materialLen: material.length,
+    utterances: utterances.length,
+    raw: acc.slice(0, 500),
+  };
 
   const parsed = extractJson(acc);
   if (!parsed) return { list: current, added: [], reinforced: 0, starved: false };
@@ -247,6 +272,7 @@ ${wrapUntrusted('材料', material, 2600)}
       confidence: 0.55,
       formedAt: now,
       lastSeenAt: now,
+      basis: 'chat-only',
     });
     added.push(claim);
   }

@@ -22,10 +22,19 @@ export interface MemoryHit {
   score: number;
 }
 
-/** 聊天里他说过的话（M1 的一部分） */
+/**
+ * 聊天里发生过的事（M1 的一部分）。
+ *
+ * 必须区分 type：
+ *   user    = 他的原话，可以拿来推断「他是什么人」
+ *   summary = 压缩出来的第三人称摘要（"他…你…"），只是叙述，不能当他的原话
+ *
+ * 混在一起会出事：摘要里的「他」会被模型当成他刚说的话。
+ */
 export interface ChatEvent {
   at: number;
   text: string;
+  type?: 'user' | 'summary';
 }
 
 const CHAT_EVENTS_KEY = 'fatfish.chat.events.v1';
@@ -36,17 +45,23 @@ export function loadChatEvents(): ChatEvent[] {
     const raw = localStorage.getItem(CHAT_EVENTS_KEY);
     if (!raw) return [];
     const arr = JSON.parse(raw);
-    return Array.isArray(arr) ? (arr as ChatEvent[]) : [];
+    if (!Array.isArray(arr)) return [];
+    // 旧数据：早期摘要写成「（聊过）xxx」混在原话里，加载时补上 type
+    return (arr as ChatEvent[]).map((e) => ({
+      ...e,
+      type: e.type ?? (e.text.startsWith('（聊过）') ? 'summary' : 'user'),
+      text: e.text.replace(/^（聊过）/, ''),
+    }));
   } catch {
     return [];
   }
 }
 
 /** 记一句他说过的话。太短的（"嗯""好"）不记，没有信息量。 */
-export function addChatEvent(text: string): ChatEvent[] {
+export function addChatEvent(text: string, type: 'user' | 'summary' = 'user'): ChatEvent[] {
   const t = text.trim();
   if (t.length < 6) return loadChatEvents();
-  const next = [{ at: Date.now(), text: t.slice(0, 300) }, ...loadChatEvents()].slice(0, MAX_CHAT_EVENTS);
+  const next = [{ at: Date.now(), text: t.slice(0, 300), type }, ...loadChatEvents()].slice(0, MAX_CHAT_EVENTS);
   try {
     localStorage.setItem(CHAT_EVENTS_KEY, JSON.stringify(next));
   } catch {
@@ -162,6 +177,11 @@ export function buildRecallBlock(hits: MemoryHit[]): string {
 ## 你想起来的事
 这些是你自己记着的，不是他刚说的。可以自然提起，也可以不提——别硬塞，别说成"根据记录"。
 ${lines.join('\n')}`;
+}
+
+/** 只取他的原话，用来推断印象。 */
+export function userUtterances(events: ChatEvent[]): ChatEvent[] {
+  return events.filter((e) => (e.type ?? 'user') === 'user');
 }
 
 /** 用户是不是在问「你还记得」——这种时候要放宽检索。 */

@@ -135,8 +135,8 @@ export default function App() {
     onChatEvent: (text) => setChatEvents(addChatEvent(text)),
     impressions,
     onCompact: (summary) => {
-      // 压缩出来的对话摘要进事件记忆，以后能召回
-      setChatEvents(addChatEvent(`（聊过）${summary}`));
+      // 摘要标记成 summary：可以召回，但不能当他的原话去推断印象
+      setChatEvents(addChatEvent(summary, 'summary'));
     },
     budget,
     onBudgetChange: setBudget,
