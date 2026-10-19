@@ -16,10 +16,17 @@ import {
 
 /** 送给模型的最大轮数（超出部分走压缩） */
 const MAX_TURNS = 14;
-/** 超过这个条数就压缩一次 */
-const COMPACT_THRESHOLD = 30;
-/** 压缩后保留最近的条数 */
-const KEEP_RECENT = 16;
+/** 上下文超过这个 token 数就压缩。384K，基本只有超长对话才会碰到 */
+const COMPACT_TOKEN_THRESHOLD = 384 * 1024;
+/** 压缩后保留多少 token 的原文。留四成，够接着聊 */
+const KEEP_TOKEN_TARGET = 150 * 1024;
+/** 兜底：条数太多也压（防止极短的碎消息堆成山） */
+const COMPACT_MAX_MESSAGES = 240;
+const KEEP_RECENT_MIN = 16;
+
+function historyTokens(list: ChatMessage[]): number {
+  return list.reduce((sum, m) => sum + estimateTokens(m.content) + 4, 0);
+}
 const HISTORY_KEY = 'fatfish.chat.history.v1';
 
 function loadHistory(): ChatMessage[] {
@@ -33,9 +40,20 @@ function loadHistory(): ChatMessage[] {
   }
 }
 
+/** localStorage 大概 5MB，按 token 留个安全上限，别把配额撑爆 */
+const PERSIST_TOKEN_CAP = 300 * 1024;
+
 function saveHistory(list: ChatMessage[]): void {
   try {
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(list.slice(-80)));
+    let total = 0;
+    let start = list.length;
+    for (let i = list.length - 1; i >= 0; i--) {
+      const cost = estimateTokens(list[i].content) + 4;
+      if (total + cost > PERSIST_TOKEN_CAP) break;
+      total += cost;
+      start = i;
+    }
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(list.slice(start)));
   } catch {
     /* 存不下就算了 */
   }
@@ -165,12 +183,22 @@ export function usePetChat({
    */
   const compact = useCallback(async (): Promise<void> => {
     const hist = historyRef.current;
-    if (hist.length <= COMPACT_THRESHOLD) return;
+    const total = historyTokens(hist);
+    if (total <= COMPACT_TOKEN_THRESHOLD && hist.length <= COMPACT_MAX_MESSAGES) return;
 
-    const old = hist.slice(0, hist.length - KEEP_RECENT);
+    // 按 token 从最新往回装，装到留够 KEEP_TOKEN_TARGET 为止
+    let keep = 0;
+    let cut = hist.length;
+    while (cut > 0 && hist.length - cut < COMPACT_MAX_MESSAGES) {
+      const cost = estimateTokens(hist[cut - 1].content) + 4;
+      if (keep + cost > KEEP_TOKEN_TARGET && hist.length - cut >= KEEP_RECENT_MIN) break;
+      keep += cost;
+      cut -= 1;
+    }
+    const old = hist.slice(0, cut);
 
     // 先裁历史再摘要：摘要失败也不能让窗口一直爆着
-    historyRef.current = hist.slice(-KEEP_RECENT);
+    historyRef.current = hist.slice(cut);
     saveHistory(historyRef.current);
 
     const transcript = old
