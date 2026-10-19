@@ -609,8 +609,14 @@ export default function App() {
           avgBrowseCost={
             commentQuota(budget, loadReplyCount(), browsedTodayCount(diary), settings.maxCommentsPerDay).avgCost
           }
-          onOpenBiliLogin={() => setBiliLoginOpen(true)}
-          onOpenMemory={() => setMemoryOpen(true)}
+          onOpenBiliLogin={() => {
+            setSettingsOpen(false);
+            setBiliLoginOpen(true);
+          }}
+          onOpenMemory={() => {
+            setSettingsOpen(false);
+            setMemoryOpen(true);
+          }}
           onBiliLogout={() => {
             void invoke('bili_logout').then(() => setBiliLoggedIn(false)).catch(() => {});
           }}
@@ -625,13 +631,19 @@ export default function App() {
           chatEvents={chatEvents}
           onDeleteImpression={(id) => setImpressions(removeImpression(id))}
           onDeleteMemory={(id) => setMemories(removeMemory(id))}
-          onClose={() => setMemoryOpen(false)}
+          onClose={() => {
+            setMemoryOpen(false);
+            setSettingsOpen(true);
+          }}
         />
       )}
 
       {biliLoginOpen && (
         <BiliLogin
-          onClose={() => setBiliLoginOpen(false)}
+          onClose={() => {
+            setBiliLoginOpen(false);
+            setSettingsOpen(true);
+          }}
           onLoggedIn={() => {
             setBiliLoggedIn(true);
             setBiliLoginOpen(false);
