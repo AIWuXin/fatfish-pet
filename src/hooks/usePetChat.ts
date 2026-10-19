@@ -3,6 +3,7 @@ import { streamChat, type ChatMessage } from '../services/llm';
 import { PERSONA, parseReply, stripPartialMarkers } from '../services/persona';
 import { buildMemoryBlock, type MemoryItem } from '../services/memory';
 import { buildDiaryBlock, type DiaryEntry } from '../services/diary';
+import { asksForMemory, buildRecallBlock, recall, type ChatEvent } from '../services/recall';
 import type { PetSettings } from '../services/settings';
 import {
   recordUsage,
@@ -21,6 +22,8 @@ interface UsePetChatOptions {
   config: PetSettings;
   memories: MemoryItem[];
   diary: DiaryEntry[];
+  chatEvents: ChatEvent[];
+  onChatEvent: (text: string) => void;
   budget: BudgetState;
   onBudgetChange: (next: BudgetState) => void;
   onMood: (mood: string) => void;
@@ -44,6 +47,8 @@ export function usePetChat({
   config,
   memories,
   diary,
+  chatEvents,
+  onChatEvent,
   budget,
   onBudgetChange,
   onMood,
@@ -131,9 +136,21 @@ export function usePetChat({
         return { text: '我还没连上脑子，先去设置里填一下 API。', ok: false };
       }
 
+      // 召回：facts 和最近 8 条日记已经全量注入，这里只补更早的和聊天事件
+      const hits = recall(text, {
+        facts: [],
+        diary: diary.slice(8),
+        chatEvents,
+        deep: asksForMemory(text),
+      });
+
       const system: ChatMessage = {
         role: 'system',
-        content: PERSONA + buildMemoryBlock(memories) + buildDiaryBlock(diary),
+        content:
+          PERSONA +
+          buildMemoryBlock(memories) +
+          buildDiaryBlock(diary) +
+          buildRecallBlock(hits),
       };
       const history = historyRef.current.slice(-MAX_TURNS * 2);
       const payload: ChatMessage[] = [system, ...history, { role: 'user', content: text }];
@@ -148,6 +165,8 @@ export function usePetChat({
         historyRef.current = [...historyRef.current, { role: 'user', content: text }];
         return { text: '脑子卡住了，等下再说。', ok: false };
       }
+
+      onChatEvent(text);
 
       const { text: clean, mood, remember } = parseReply(result.raw);
       historyRef.current = [
@@ -166,7 +185,7 @@ export function usePetChat({
         starved: result.starved,
       };
     },
-    [config, memories, diary, run, onMood, onRemember, onHungry],
+    [config, memories, diary, chatEvents, onChatEvent, run, onMood, onRemember, onHungry],
   );
 
   /**
@@ -194,7 +213,7 @@ export function usePetChat({
       if (remember) onRemember(remember);
       return !result.starved ? text || null : (text || '') + STARVED_SUFFIX;
     },
-    [config, memories, diary, run, onMood, onRemember, onHungry],
+    [config, memories, diary, chatEvents, onChatEvent, run, onMood, onRemember, onHungry],
   );
 
   const clear = useCallback(() => {

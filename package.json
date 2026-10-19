@@ -1,7 +1,7 @@
 {
   "name": "fatfish-pet",
   "private": true,
-  "version": "0.1.0-a0",
+  "version": "0.1.0-a1",
   "description": "大肥鱼桌宠 — Live2D 鲸鱼娘常驻桌面伙伴",
   "type": "module",
   "scripts": {

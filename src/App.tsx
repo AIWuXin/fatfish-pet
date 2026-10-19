@@ -17,6 +17,7 @@ import { addDiary, loadDiary, type DiaryEntry } from './services/diary';
 import { incReplyCount, loadReplyCount } from './services/reply-limit';
 import { browsedTodayCount, commentQuota } from './services/quota';
 import { handleReplies } from './services/social';
+import { addChatEvent, loadChatEvents, type ChatEvent } from './services/recall';
 
 const MODEL_URL = '/live2d/models/ds-whale-girl/c_0120.model3.json';
 
@@ -73,6 +74,7 @@ export default function App() {
   const [memories, setMemories] = useState<MemoryItem[]>(() => loadMemories());
   const [budget, setBudget] = useState<BudgetState>(() => loadBudget());
   const [diary, setDiary] = useState<DiaryEntry[]>(() => loadDiary());
+  const [chatEvents, setChatEvents] = useState<ChatEvent[]>(() => loadChatEvents());
 
   const [biliLoggedIn, setBiliLoggedIn] = useState(false);
   const [selfMid, setSelfMid] = useState(0);
@@ -125,6 +127,8 @@ export default function App() {
     config: settings,
     memories,
     diary,
+    chatEvents,
+    onChatEvent: (text) => setChatEvents(addChatEvent(text)),
     budget,
     onBudgetChange: setBudget,
     onMood,

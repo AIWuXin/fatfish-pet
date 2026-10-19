@@ -1,6 +1,6 @@
 [package]
 name = "fatfish-pet"
-version = "0.1.0-a0"
+version = "0.1.0-a1"
 description = "大肥鱼桌宠"
 authors = ["wuxin"]
 edition = "2021"
