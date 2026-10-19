@@ -1,0 +1,24 @@
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/gen/
+
+# 构建产物，不进版本库
+release/
+*.exe
+*.msi
+*.dmg
+*.AppImage
+
+# 本地运行痕迹
+shots/
+dev.log
+.dev.pid
+*.local
+.env
+
+# 编辑器
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.iml

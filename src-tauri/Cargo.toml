@@ -1,0 +1,40 @@
+[package]
+name = "fatfish-pet"
+version = "0.1.0-a0"
+description = "大肥鱼桌宠"
+authors = ["wuxin"]
+edition = "2021"
+rust-version = "1.77.2"
+
+[lib]
+name = "fatfish_pet_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-store = "2"
+tauri-plugin-clipboard-manager = "2"
+tauri-plugin-http = "2"
+tauri-plugin-global-shortcut = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+flate2 = "1"
+md-5 = "0.10"
+tokio = { version = "1", features = ["time"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+  "Win32_Foundation",
+  "Win32_UI_WindowsAndMessaging",
+] }
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
+opt-level = "s"
+panic = "abort"

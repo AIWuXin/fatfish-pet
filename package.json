@@ -1,0 +1,36 @@
+{
+  "name": "fatfish-pet",
+  "private": true,
+  "version": "0.1.0-a0",
+  "description": "大肥鱼桌宠 — Live2D 鲸鱼娘常驻桌面伙伴",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "app:dev": "tauri dev",
+    "app:build": "tauri build"
+  },
+  "dependencies": {
+    "@pixi/sound": "^6.0.1",
+    "@tauri-apps/api": "^2.9.0",
+    "@tauri-apps/plugin-clipboard-manager": "^2.4.0",
+    "@tauri-apps/plugin-http": "^2.8.3",
+    "@tauri-apps/plugin-store": "^2.4.0",
+    "pixi.js": "^8.22.0",
+    "qrcode": "^1.5.4",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "untitled-pixi-live2d-engine": "^1.4.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.9.0",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^4.7.0",
+    "typescript": "~5.9.0",
+    "vite": "^7.1.0"
+  }
+}

@@ -1,0 +1,14 @@
+# 统一换行，避免 Windows 上每次提交都报 LF→CRLF
+* text=auto eol=lf
+
+# 二进制资源
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.icns binary
+*.moc3 binary
+*.exe binary
+*.woff binary
+*.woff2 binary
