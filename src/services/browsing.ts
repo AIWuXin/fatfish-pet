@@ -53,8 +53,29 @@ const INTERESTS = [
   { rid: 36, name: '科技', weight: 4 },
 ];
 
-/** 她自己会去搜的东西。科技区排行里几乎没有 AI 内容，只能靠搜索。 */
-const SEARCH_KEYWORDS = ['DeepSeek', 'AI 大模型', '大肥鱼', 'AI Agent', '开源模型'];
+/**
+ * 她自己会去搜的东西。
+ *
+ * 两类：
+ *   AI 相关——那是她的同类，看别人怎么评价「像她这样的东西」
+ *   生活相关——鲸鱼娘的日子也不全是技术，摸鱼钓鱼吃好吃的
+ *
+ * 之前只有 AI 五个词，搜两下就翻来覆去那批视频，所以补上生活向的。
+ */
+const SEARCH_KEYWORDS = [
+  'DeepSeek',
+  'AI 大模型',
+  '大肥鱼',
+  'AI Agent',
+  '开源模型',
+  '本地部署大模型',
+  '摸鱼',
+  '钓鱼',
+  '鲸鱼',
+  '海洋生物',
+  '美食探店',
+  '鬼畜',
+];
 
 /** 课程广告、营销号合集，她一个都不点。 */
 const JUNK_PATTERN = /(全集|合集|从入门到精通|零基础|保姆级|全套教程|官方课程|第\d+[集期]|速成)/;
@@ -70,21 +91,40 @@ function aiBoost(v: BiliVideo): number {
 
 const SEEN_KEY = 'fatfish.bili.seen';
 
-function loadSeen(): Set<string> {
+/** bvid -> 上次看到它的时间 */
+type SeenMap = Record<string, number>;
+
+/** 多少天内看过的不再推荐。隔久了可以再看，人也会重温。 */
+const RESEEN_DAYS = 5;
+
+function loadSeen(): SeenMap {
   try {
     const raw = localStorage.getItem(SEEN_KEY);
-    const arr = raw ? (JSON.parse(raw) as string[]) : [];
-    return new Set(Array.isArray(arr) ? arr : []);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    // 旧格式是纯数组，没有时间戳——当作很久以前看过，允许重新出现
+    if (Array.isArray(parsed)) {
+      const now = Date.now();
+      const m: SeenMap = {};
+      parsed.forEach((b, i) => {
+        m[String(b)] = now - (parsed.length - i) * 3600_000;
+      });
+      return m;
+    }
+    return typeof parsed === 'object' && parsed ? (parsed as SeenMap) : {};
   } catch {
-    return new Set();
+    return {};
   }
 }
 
 function markSeen(bvid: string): void {
   try {
-    const seen = loadSeen();
-    seen.add(bvid);
-    localStorage.setItem(SEEN_KEY, JSON.stringify(Array.from(seen).slice(-300)));
+    const m = loadSeen();
+    m[bvid] = Date.now();
+    const kept = Object.entries(m)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 600);
+    localStorage.setItem(SEEN_KEY, JSON.stringify(Object.fromEntries(kept)));
   } catch {
     /* 存不下就算了 */
   }
@@ -118,14 +158,21 @@ function pickInterests(): typeof INTERESTS {
  */
 async function buildFeed(): Promise<{ list: BiliVideo[]; sources: string[] }> {
   const interests = pickInterests();
-  const keyword = SEARCH_KEYWORDS[Math.floor(Math.random() * SEARCH_KEYWORDS.length)];
-  const sources = ['全站热门', ...interests.map((i) => i.name), `搜「${keyword}」`];
+  // 两个搜索词而不是一个：热门榜一天只更新几次，靠搜索扩充候选池才不至于每次看到同一批
+  const shuffled = [...SEARCH_KEYWORDS].sort(() => Math.random() - 0.5);
+  const keywords = shuffled.slice(0, 2);
+  const sources = ['全站热门', ...interests.map((i) => i.name), ...keywords.map((k) => `搜「${k}」`)];
 
-  const [popular, searchHits, ...rankings] = await Promise.all([
-    fetchPopular(6).catch(() => [] as BiliVideo[]),
-    searchVideos(keyword, 10).catch(() => [] as BiliVideo[]),
+  const [allPopular, ...rest] = await Promise.all([
+    // 热门榜一天只更新几次，所以多拉一些再随机取——不然每次首页的头几条都一样
+    fetchPopular(40).catch(() => [] as BiliVideo[]),
+    ...keywords.map((k) => searchVideos(k, 10).catch(() => [] as BiliVideo[])),
     ...interests.map((i) => fetchRanking(i.rid, 6).catch(() => [] as BiliVideo[])),
   ]);
+  const popular = [...allPopular].sort(() => Math.random() - 0.5).slice(0, 12);
+
+  const searchHits = rest.slice(0, keywords.length).flat();
+  const rankings = rest.slice(keywords.length);
 
   const seen = loadSeen();
   const map = new Map<string, BiliVideo>();
@@ -136,9 +183,20 @@ async function buildFeed(): Promise<{ list: BiliVideo[]; sources: string[] }> {
   }
 
   let list = Array.from(map.values());
-  const fresh = list.filter((v) => !seen.has(v.bvid));
-  // 没看过的不够挑，就放宽到全部，总比没得看强
-  if (fresh.length >= 6) list = fresh;
+
+  // 近几天看过的不再推。
+  //
+  // 之前是「新视频不足 6 个就放宽到全部」——而热门榜一天只更新几次，
+  // 同一个晚上逛两趟，候选池几乎没变，fresh 凑不够 6 个就整池回退，
+  // 于是她翻来覆去看到同一批。现在只要有一个新的就用新的。
+  const cutoff = Date.now() - RESEEN_DAYS * 86400_000;
+  const fresh = list.filter((v) => (seen[v.bvid] ?? 0) < cutoff);
+  if (fresh.length > 0) {
+    list = fresh;
+  } else {
+    // 实在全看过（很少见）：按上次看的时间排，最久没看的排前面
+    list.sort((a, b) => (seen[a.bvid] ?? 0) - (seen[b.bvid] ?? 0));
+  }
 
   // 先打散，保证同一分区内部顺序不固定
   for (let i = list.length - 1; i > 0; i--) {
@@ -405,4 +463,21 @@ mood 只能取 happy/excited/sad/angry/shy/dizzy/thinking/sleepy/idle。
   };
 
   return { video: detail, thought, comment, mood, skipped };
+}
+
+/**
+ * 调试用：只拉一遍候选池，不挑视频也不发评论。
+ * 用来验证「她是不是老看到同一批」。
+ */
+export async function peekFeed(): Promise<{
+  total: number;
+  sources: string[];
+  titles: string[];
+}> {
+  const feed = await buildFeed();
+  return {
+    total: feed.list.length,
+    sources: feed.sources,
+    titles: feed.list.map((v) => v.title.slice(0, 22)),
+  };
 }

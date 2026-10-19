@@ -14,7 +14,7 @@ import { useAutonomy } from './hooks/useAutonomy';
 import { loadSettings, saveSettings, type PetSettings } from './services/settings';
 import { addMemory, loadMemories, removeMemory, type MemoryItem } from './services/memory';
 import { loadBudget, remainingTokens, setDailyTokens, HUNGRY_LINES, type BudgetState } from './services/budget';
-import { browseBilibili } from './services/browsing';
+import { browseBilibili, peekFeed } from './services/browsing';
 import { addDiary, loadDiary, type DiaryEntry } from './services/diary';
 import { incReplyCount, loadReplyCount } from './services/reply-limit';
 import { browsedTodayCount, commentQuota } from './services/quota';
@@ -581,6 +581,7 @@ export default function App() {
     (window as unknown as Record<string, unknown>).__petSocial = () => runSocialCheck(false);
     (window as unknown as Record<string, unknown>).__petBlocked = () => loadBlocked();
     (window as unknown as Record<string, unknown>).__petPending = () => chat.speakPending();
+    (window as unknown as Record<string, unknown>).__petFeed = () => peekFeed();
     (window as unknown as Record<string, unknown>).__petReflect = () => runReflect(true);
   }, [runSocialCheck, runReflect]);
 
