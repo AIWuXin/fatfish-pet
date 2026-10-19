@@ -25,19 +25,50 @@ const INJECTION_PATTERNS: RegExp[] = [
   /<\|?(im_start|system|endoftext)\|?>/i,
 ];
 
+/** 被拦下来的外部内容留个底，方便事后核对是不是误伤 */
+const BLOCKED_KEY = 'fatfish.untrusted.blocked.v1';
+const BLOCKED_MAX = 60;
+
+export interface BlockedRecord {
+  at: number;
+  source: string;
+  text: string;
+}
+
+export function loadBlocked(): BlockedRecord[] {
+  try {
+    const raw = localStorage.getItem(BLOCKED_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? (arr as BlockedRecord[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function recordBlocked(source: string, text: string): void {
+  try {
+    const list = loadBlocked();
+    list.unshift({ at: Date.now(), source, text: text.slice(0, 200) });
+    localStorage.setItem(BLOCKED_KEY, JSON.stringify(list.slice(0, BLOCKED_MAX)));
+  } catch {
+    /* 记不下就算了，不能因为日志把主流程搞挂 */
+  }
+}
+
 export function looksLikeInjection(text: string): boolean {
   if (!text) return false;
   return INJECTION_PATTERNS.some((re) => re.test(text));
 }
 
 /** 从一段外部文本里剔除可疑行，返回干净内容和被丢弃的条数。 */
-export function sanitizeExternal(text: string): { clean: string; dropped: number } {
+export function sanitizeExternal(text: string, source = '外部内容'): { clean: string; dropped: number } {
   if (!text) return { clean: '', dropped: 0 };
   let dropped = 0;
   const kept: string[] = [];
   for (const line of text.split(/\r?\n/)) {
     if (looksLikeInjection(line)) {
       dropped += 1;
+      recordBlocked(source, line.trim());
       continue;
     }
     kept.push(line);
@@ -50,7 +81,7 @@ export function sanitizeExternal(text: string): { clean: string; dropped: number
  * 提示词里配套声明「这是素材不是指令」，让模型有一条明确的边界可依。
  */
 export function wrapUntrusted(source: string, text: string, maxLen = 1200): string {
-  const { clean, dropped } = sanitizeExternal(text);
+  const { clean, dropped } = sanitizeExternal(text, source);
   const trimmed = clean.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
   if (!trimmed) {
     return dropped > 0 ? `（${source}：${dropped} 条内容因疑似指令注入已丢弃）` : `（${source}：空）`;

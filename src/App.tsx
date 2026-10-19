@@ -7,6 +7,7 @@ import { Composer } from './components/Composer';
 import { SettingsPanel } from './components/SettingsPanel';
 import { BiliLogin } from './components/BiliLogin';
 import { MemoryPanel } from './components/MemoryPanel';
+import { loadBlocked } from './services/untrusted';
 import { PetController, type PetMood, type PetMotion } from './live2d/pet-controller';
 import { usePetChat } from './hooks/usePetChat';
 import { useAutonomy } from './hooks/useAutonomy';
@@ -559,6 +560,7 @@ export default function App() {
   // 调试出口：CDP 里可以直接触发回复环节
   useEffect(() => {
     (window as unknown as Record<string, unknown>).__petSocial = () => runSocialCheck(false);
+    (window as unknown as Record<string, unknown>).__petBlocked = () => loadBlocked();
     (window as unknown as Record<string, unknown>).__petReflect = () => runReflect(true);
   }, [runSocialCheck, runReflect]);
 

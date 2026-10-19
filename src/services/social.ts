@@ -20,7 +20,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { replyTo } from './bilibili';
 import { streamChat, type ChatMessage } from './llm';
 import { PERSONA } from './persona';
-import { UNTRUSTED_NOTICE, wrapUntrusted } from './untrusted';
+import { UNTRUSTED_NOTICE, looksLikeInjection, wrapUntrusted } from './untrusted';
 import { estimateTokens, recordUsage, remainingTokens, type BudgetState } from './budget';
 import { emoteHint, loadEmotes, sanitizeEmotes, stripMoodLeak } from './emotes';
 import type { PetSettings } from './settings';
@@ -113,7 +113,14 @@ async function composeReply(
   incoming: IncomingReply,
   opts: ComposeOptions,
   emotes: string[],
-): Promise<{ text: string | null; mood?: string; starved?: boolean }> {
+): Promise<{ text: string | null; mood?: string; starved?: boolean; blocked?: boolean }> {
+  // 命中注入话术的直接跳过，连模型都不问。
+  // 逻辑上模型看到"已丢弃"也会 skip，但白花一次请求没必要；
+  // 而且跳过原因更明确，日志里能看出来是"被挡住"还是"她不想回"。
+  if (looksLikeInjection(incoming.replyContent)) {
+    return { text: null, blocked: true };
+  }
+
   const payload: ChatMessage[] = [
     { role: 'system', content: PERSONA + REPLY_PERSONA + UNTRUSTED_NOTICE + emoteHint(emotes) },
     {

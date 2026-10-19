@@ -3,6 +3,7 @@ import type { Impression } from '../services/impressions';
 import type { MemoryItem } from '../services/memory';
 import type { DiaryEntry } from '../services/diary';
 import type { ChatEvent } from '../services/recall';
+import { loadBlocked } from '../services/untrusted';
 
 interface MemoryPanelProps {
   impressions: Impression[];
@@ -49,6 +50,7 @@ export function MemoryPanel({
 }: MemoryPanelProps) {
   const [openImp, setOpenImp] = useState<string | null>(null);
   const [tab, setTab] = useState<'tree' | 'timeline'>('tree');
+  const blocked = loadBlocked();
 
   const events = [
     ...chatEvents.map((c) => ({ at: c.at, kind: '他说' as const, text: c.text })),
@@ -155,6 +157,27 @@ export function MemoryPanel({
             ))}
             {events.length > 12 && <div className="mem-more">还有 {events.length - 12} 条更早的…</div>}
           </div>
+
+          {/* 拦截记录：让她证明"我没被带跑"，也方便你核对有没有误伤 */}
+          {blocked.length > 0 && (
+            <div className="mem-group">
+              <div className="mem-group-title">
+                拦下来的 <em>有人想通过弹幕/评论给我下指令，这些我没看</em>
+              </div>
+              {blocked.slice(0, 6).map((b, idx) => (
+                <div className="mem-row" key={idx}>
+                  <span className="mem-dot blocked" />
+                  <span className="mem-claim">
+                    <b className="mem-kind">{b.source}</b> {b.text.slice(0, 36)}
+                  </span>
+                  <span className="mem-when">{when(b.at)}</span>
+                </div>
+              ))}
+              {blocked.length > 6 && (
+                <div className="mem-more">还有 {blocked.length - 6} 条…</div>
+              )}
+            </div>
+          )}
         </div>
       ) : (
         <div className="mem-timeline">

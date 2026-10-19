@@ -815,3 +815,8 @@ body {
   padding-top: 6px;
   border-top: 1px solid rgba(120, 150, 200, 0.14);
 }
+
+/* 拦截记录的小圆点，用警示色区分于记忆条目 */
+.mem-dot.blocked {
+  background: #e8834a;
+}
