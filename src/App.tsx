@@ -349,13 +349,22 @@ export default function App() {
     controller.setTalking(chat.busy);
   }, [chat.busy, controller]);
 
-  // 启动 30 秒后自己翻一次评论区：有人回她就回一句
+  // 评论区轮询：启动 30 秒后先翻一次，之后每 10 分钟再看
+  //
+  // 之前只有一个 setTimeout —— 开机查一次就再也不查了，
+  // 别人回了她只能等下次启动才知道。现在补上周期检查。
   useEffect(() => {
     if (!biliLoggedIn || selfMid === 0) return;
-    const timer = window.setTimeout(() => {
+    const first = window.setTimeout(() => {
       void runSocialCheck(true);
     }, 30000);
-    return () => window.clearTimeout(timer);
+    const ticker = window.setInterval(() => {
+      void runSocialCheck(false);
+    }, 10 * 60_000);
+    return () => {
+      window.clearTimeout(first);
+      window.clearInterval(ticker);
+    };
   }, [biliLoggedIn, selfMid, runSocialCheck]);
 
   browseHandlerRef.current = () => {
