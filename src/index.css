@@ -802,3 +802,16 @@ body {
   font-size: 10px;
   color: rgba(90, 103, 133, 0.7);
 }
+
+/* 设置面板内容多了会被 flex 压扁，文字互相盖住。
+   所有直接子项禁止收缩，超出就滚动。 */
+.settings > * {
+  flex-shrink: 0;
+}
+
+/* 不用 margin-top:auto —— 在可滚动容器里会把按钮挤到覆盖别的内容 */
+.settings-actions {
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(120, 150, 200, 0.14);
+}
