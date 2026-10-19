@@ -54,6 +54,10 @@ export function loadImpressions(): Impression[] {
   }
 }
 
+export function removeImpression(id: string): Impression[] {
+  return persist(loadImpressions().filter((i) => i.id !== id));
+}
+
 function persist(list: Impression[]): Impression[] {
   const next = list
     .filter((i) => i.confidence >= MIN_CONFIDENCE)
@@ -139,7 +143,8 @@ export async function reflect(
   ].join('\n');
 
   // 材料太少就不反思——三五句话推不出一个人，只会编
-  if (material.length < 100 || opts.chatEvents.length < 3) {
+  // 一条也能开始观察，不设太高门槛
+  if (material.length < 100 || opts.chatEvents.length < 1) {
     return { list: current, added: [], reinforced: 0, starved: false };
   }
 

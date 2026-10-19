@@ -19,6 +19,7 @@ interface SettingsPanelProps {
   quotaLeft: number;
   avgBrowseCost: number;
   onOpenBiliLogin: () => void;
+  onOpenMemory: () => void;
   onBiliLogout: () => void;
 }
 
@@ -36,6 +37,7 @@ export function SettingsPanel({
   quotaLeft,
   avgBrowseCost,
   onOpenBiliLogin,
+  onOpenMemory,
   onBiliLogout,
 }: SettingsPanelProps) {
   const [draft, setDraft] = useState(settings);
@@ -238,6 +240,13 @@ ${d.thought}`}>
           </div>
         </div>
       )}
+
+      <button className="memory-entry" onClick={onOpenMemory}>
+        <span>她的记忆</span>
+        <em>
+          印象 {impressions.length} · 事实 {memories.length} · 事件 {diary.length + 0}
+        </em>
+      </button>
 
       <div className="settings-actions">
         <button

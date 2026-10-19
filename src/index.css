@@ -556,3 +556,249 @@ body {
   color: rgba(120, 90, 150, 0.7);
   margin-left: 5px;
 }
+
+/* ---------- 记忆可视化 ---------- */
+
+.memory-panel {
+  gap: 6px;
+}
+
+.mem-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 9px;
+  background: rgba(120, 160, 210, 0.1);
+}
+
+.mem-tab {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 11.5px;
+  padding: 4px 0;
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.mem-tab.active {
+  background: #fff;
+  color: var(--accent);
+  box-shadow: 0 1px 3px rgba(60, 90, 140, 0.12);
+}
+
+.mem-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.mem-group-title {
+  font-size: 11px;
+  color: var(--ink-soft);
+  margin-bottom: 4px;
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+}
+
+.mem-group-title em {
+  font-style: normal;
+  font-size: 10px;
+  color: rgba(90, 103, 133, 0.6);
+}
+
+.mem-node {
+  margin-bottom: 3px;
+}
+
+.mem-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 7px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.6);
+  font-size: 11.5px;
+  line-height: 1.45;
+  cursor: default;
+}
+
+.mem-node .mem-row {
+  cursor: pointer;
+}
+
+.mem-node .mem-row:hover {
+  background: rgba(200, 180, 230, 0.2);
+}
+
+.mem-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.mem-dot.high {
+  background: #5aa87a;
+}
+.mem-dot.mid {
+  background: #d4a04a;
+}
+.mem-dot.low {
+  background: #b0b6c4;
+}
+.mem-dot.fact {
+  background: var(--accent);
+}
+.mem-dot.event {
+  background: rgba(120, 150, 200, 0.45);
+}
+
+.mem-claim {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink);
+}
+
+.mem-kind {
+  font-weight: 600;
+  color: var(--ink-soft);
+  margin-right: 3px;
+}
+
+.mem-conf {
+  font-size: 10px;
+  color: rgba(90, 103, 133, 0.75);
+  flex: none;
+}
+
+.mem-when {
+  font-size: 9.5px;
+  color: rgba(90, 103, 133, 0.6);
+  flex: none;
+}
+
+.mem-del {
+  border: none;
+  background: transparent;
+  color: rgba(90, 103, 133, 0.4);
+  font-size: 13px;
+  line-height: 1;
+  padding: 0 2px;
+  cursor: pointer;
+  flex: none;
+}
+
+.mem-del:hover {
+  color: #d46a6a;
+}
+
+.mem-evidence {
+  margin: 4px 0 6px 12px;
+  padding: 6px 8px;
+  border-left: 2px solid rgba(180, 160, 210, 0.4);
+  background: rgba(200, 180, 230, 0.08);
+  border-radius: 0 6px 6px 0;
+}
+
+.mem-ev-title {
+  font-size: 9.5px;
+  color: rgba(90, 103, 133, 0.7);
+  margin-bottom: 3px;
+}
+
+.mem-ev-item {
+  font-size: 10.5px;
+  color: var(--ink-soft);
+  line-height: 1.5;
+  padding: 1px 0;
+}
+
+.mem-ev-item::before {
+  content: '· ';
+  color: rgba(90, 103, 133, 0.5);
+}
+
+.mem-empty,
+.mem-more {
+  font-size: 10.5px;
+  color: rgba(90, 103, 133, 0.55);
+  padding: 3px 7px;
+}
+
+.mem-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  padding-left: 4px;
+}
+
+.tl-item {
+  display: flex;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px dashed rgba(120, 150, 200, 0.16);
+}
+
+.tl-time {
+  flex: none;
+  width: 52px;
+  font-size: 9.5px;
+  color: rgba(90, 103, 133, 0.65);
+  padding-top: 2px;
+}
+
+.tl-body {
+  flex: 1;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.tl-body b {
+  color: var(--ink-soft);
+  font-weight: 600;
+  margin-right: 3px;
+}
+
+.mem-foot {
+  font-size: 10px;
+  line-height: 1.5;
+  color: rgba(90, 103, 133, 0.65);
+  padding-top: 2px;
+  border-top: 1px solid rgba(120, 150, 200, 0.14);
+}
+
+.memory-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  margin-top: 4px;
+  border: 1px solid rgba(180, 160, 210, 0.35);
+  border-radius: 10px;
+  background: rgba(200, 180, 230, 0.12);
+  color: var(--ink);
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.memory-entry:hover {
+  background: rgba(200, 180, 230, 0.22);
+}
+
+.memory-entry em {
+  font-style: normal;
+  font-size: 10px;
+  color: rgba(90, 103, 133, 0.7);
+}

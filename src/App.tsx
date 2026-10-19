@@ -6,6 +6,7 @@ import { PetStage } from './components/PetStage';
 import { Composer } from './components/Composer';
 import { SettingsPanel } from './components/SettingsPanel';
 import { BiliLogin } from './components/BiliLogin';
+import { MemoryPanel } from './components/MemoryPanel';
 import { PetController, type PetMood, type PetMotion } from './live2d/pet-controller';
 import { usePetChat } from './hooks/usePetChat';
 import { useAutonomy } from './hooks/useAutonomy';
@@ -18,7 +19,7 @@ import { incReplyCount, loadReplyCount } from './services/reply-limit';
 import { browsedTodayCount, commentQuota } from './services/quota';
 import { handleReplies } from './services/social';
 import { addChatEvent, loadChatEvents, type ChatEvent } from './services/recall';
-import { loadImpressions, reflect, type Impression } from './services/impressions';
+import { loadImpressions, reflect, removeImpression, type Impression } from './services/impressions';
 
 const MODEL_URL = '/live2d/models/ds-whale-girl/c_0120.model3.json';
 
@@ -81,6 +82,7 @@ export default function App() {
   const [biliLoggedIn, setBiliLoggedIn] = useState(false);
   const [selfMid, setSelfMid] = useState(0);
   const [biliLoginOpen, setBiliLoginOpen] = useState(false);
+  const [memoryOpen, setMemoryOpen] = useState(false);
 
   // 设置里的预算和记账本同步：改过设置就立刻生效，不用等下次保存
   useEffect(() => {
@@ -382,7 +384,7 @@ export default function App() {
         if (info.inside) autonomy.touch();
 
         // 交互面板打开时保持窗口可点，否则鼠标一离开角色就没法操作面板
-        const keepAlive = chatOpen || settingsOpen || biliLoginOpen;
+        const keepAlive = chatOpen || settingsOpen || biliLoginOpen || memoryOpen;
 
         const r = controller.getHitRect();
         const pad = 6;
@@ -410,7 +412,7 @@ export default function App() {
       }
     }, 50);
     return () => window.clearInterval(timer);
-  }, [controller, chatOpen, settingsOpen, biliLoginOpen, autonomy]);
+  }, [controller, chatOpen, settingsOpen, biliLoginOpen, memoryOpen, autonomy]);
 
   useEffect(() => {
     const onResize = () => window.setTimeout(publishHitRegion, 120);
@@ -608,9 +610,22 @@ export default function App() {
             commentQuota(budget, loadReplyCount(), browsedTodayCount(diary), settings.maxCommentsPerDay).avgCost
           }
           onOpenBiliLogin={() => setBiliLoginOpen(true)}
+          onOpenMemory={() => setMemoryOpen(true)}
           onBiliLogout={() => {
             void invoke('bili_logout').then(() => setBiliLoggedIn(false)).catch(() => {});
           }}
+        />
+      )}
+
+      {memoryOpen && (
+        <MemoryPanel
+          impressions={impressions}
+          memories={memories}
+          diary={diary}
+          chatEvents={chatEvents}
+          onDeleteImpression={(id) => setImpressions(removeImpression(id))}
+          onDeleteMemory={(id) => setMemories(removeMemory(id))}
+          onClose={() => setMemoryOpen(false)}
         />
       )}
 
