@@ -545,3 +545,14 @@ body {
 .diary-item {
   background: rgba(120, 200, 160, 0.12);
 }
+
+.impression-item {
+  background: rgba(200, 160, 220, 0.14);
+}
+
+.conf {
+  font-style: normal;
+  font-size: 9.5px;
+  color: rgba(120, 90, 150, 0.7);
+  margin-left: 5px;
+}

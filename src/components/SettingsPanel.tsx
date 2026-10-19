@@ -3,11 +3,13 @@ import { invoke } from '@tauri-apps/api/core';
 import type { PetSettings } from '../services/settings';
 import type { MemoryItem } from '../services/memory';
 import type { DiaryEntry } from '../services/diary';
+import type { Impression } from '../services/impressions';
 
 interface SettingsPanelProps {
   settings: PetSettings;
   memories: MemoryItem[];
   diary: DiaryEntry[];
+  impressions: Impression[];
   onSave: (s: PetSettings) => void;
   onRemoveMemory: (id: string) => void;
   onClose: () => void;
@@ -24,6 +26,7 @@ export function SettingsPanel({
   settings,
   memories,
   diary,
+  impressions,
   onSave,
   onRemoveMemory,
   onClose,
@@ -188,6 +191,22 @@ export function SettingsPanel({
           <div className="bili-hint">没登录也能逛，只是看不了、发不了评论。</div>
         )}
       </div>
+
+      {impressions.length > 0 && (
+        <div className="settings-memories">
+          <div className="memories-title">她对你的印象（{impressions.length}）</div>
+          <div className="memories-list">
+            {impressions.map((i) => (
+              <div className="memory-item impression-item" key={i.id}>
+                <span title={`证据：${i.evidence.join(' / ')}`}>
+                  {i.claim}
+                  <em className="conf">{Math.round(i.confidence * 100)}%</em>
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="settings-memories">
         <div className="memories-title">她记得的事（{memories.length}）</div>

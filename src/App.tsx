@@ -18,6 +18,7 @@ import { incReplyCount, loadReplyCount } from './services/reply-limit';
 import { browsedTodayCount, commentQuota } from './services/quota';
 import { handleReplies } from './services/social';
 import { addChatEvent, loadChatEvents, type ChatEvent } from './services/recall';
+import { loadImpressions, reflect, type Impression } from './services/impressions';
 
 const MODEL_URL = '/live2d/models/ds-whale-girl/c_0120.model3.json';
 
@@ -75,6 +76,7 @@ export default function App() {
   const [budget, setBudget] = useState<BudgetState>(() => loadBudget());
   const [diary, setDiary] = useState<DiaryEntry[]>(() => loadDiary());
   const [chatEvents, setChatEvents] = useState<ChatEvent[]>(() => loadChatEvents());
+  const [impressions, setImpressions] = useState<Impression[]>(() => loadImpressions());
 
   const [biliLoggedIn, setBiliLoggedIn] = useState(false);
   const [selfMid, setSelfMid] = useState(0);
@@ -129,6 +131,7 @@ export default function App() {
     diary,
     chatEvents,
     onChatEvent: (text) => setChatEvents(addChatEvent(text)),
+    impressions,
     budget,
     onBudgetChange: setBudget,
     onMood,
@@ -510,10 +513,45 @@ export default function App() {
     controller.release();
   }, [controller, handlePoke]);
 
+  /** 跑一次反思：从最近的材料里更新她对你的印象。每天最多一次。 */
+  const reflectRef = useRef({ diary, chatEvents, settings, budget });
+  reflectRef.current = { diary, chatEvents, settings, budget };
+
+  const runReflect = useCallback(
+    async (force = false): Promise<{ added: string[]; reinforced: number } | null> => {
+      const cur = reflectRef.current;
+      if (!cur.settings.apiKey) return null;
+      const last = Number(localStorage.getItem('fatfish.impressions.at') || 0);
+      if (!force && Date.now() - last < 20 * 3600_000) return null;
+
+      const r = await reflect({
+        config: cur.settings,
+        budget: cur.budget,
+        onBudgetChange: setBudget,
+        chatEvents: cur.chatEvents,
+        diary: cur.diary,
+      });
+      localStorage.setItem('fatfish.impressions.at', String(Date.now()));
+      if (r.list.length > 0) setImpressions(r.list);
+      return { added: r.added, reinforced: r.reinforced };
+    },
+    [],
+  );
+
+  // 启动 75 秒后反思一次（错开 30 秒那条社交检查）
+  useEffect(() => {
+    if (!settings.apiKey) return;
+    const timer = window.setTimeout(() => {
+      void runReflect(false);
+    }, 75000);
+    return () => window.clearTimeout(timer);
+  }, [settings.apiKey, runReflect]);
+
   // 调试出口：CDP 里可以直接触发回复环节
   useEffect(() => {
     (window as unknown as Record<string, unknown>).__petSocial = () => runSocialCheck(false);
-  }, [runSocialCheck]);
+    (window as unknown as Record<string, unknown>).__petReflect = () => runReflect(true);
+  }, [runSocialCheck, runReflect]);
 
   // 调试出口：CDP 里可以直接读 window.__petState 看自主行为状态
   useEffect(() => {
@@ -555,6 +593,7 @@ export default function App() {
           settings={settings}
           memories={memories}
           diary={diary}
+          impressions={impressions}
           onSave={handleSaveSettings}
           onRemoveMemory={handleRemoveMemory}
           onClose={() => setSettingsOpen(false)}

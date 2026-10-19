@@ -4,6 +4,7 @@ import { PERSONA, parseReply, stripPartialMarkers } from '../services/persona';
 import { buildMemoryBlock, type MemoryItem } from '../services/memory';
 import { buildDiaryBlock, type DiaryEntry } from '../services/diary';
 import { asksForMemory, buildRecallBlock, recall, type ChatEvent } from '../services/recall';
+import { buildImpressionBlock, type Impression } from '../services/impressions';
 import type { PetSettings } from '../services/settings';
 import {
   recordUsage,
@@ -24,6 +25,7 @@ interface UsePetChatOptions {
   diary: DiaryEntry[];
   chatEvents: ChatEvent[];
   onChatEvent: (text: string) => void;
+  impressions: Impression[];
   budget: BudgetState;
   onBudgetChange: (next: BudgetState) => void;
   onMood: (mood: string) => void;
@@ -49,6 +51,7 @@ export function usePetChat({
   diary,
   chatEvents,
   onChatEvent,
+  impressions,
   budget,
   onBudgetChange,
   onMood,
@@ -150,7 +153,8 @@ export function usePetChat({
           PERSONA +
           buildMemoryBlock(memories) +
           buildDiaryBlock(diary) +
-          buildRecallBlock(hits),
+          buildRecallBlock(hits) +
+          buildImpressionBlock(impressions),
       };
       const history = historyRef.current.slice(-MAX_TURNS * 2);
       const payload: ChatMessage[] = [system, ...history, { role: 'user', content: text }];
@@ -185,7 +189,7 @@ export function usePetChat({
         starved: result.starved,
       };
     },
-    [config, memories, diary, chatEvents, onChatEvent, run, onMood, onRemember, onHungry],
+    [config, memories, diary, chatEvents, onChatEvent, impressions, run, onMood, onRemember, onHungry],
   );
 
   /**
@@ -213,7 +217,7 @@ export function usePetChat({
       if (remember) onRemember(remember);
       return !result.starved ? text || null : (text || '') + STARVED_SUFFIX;
     },
-    [config, memories, diary, chatEvents, onChatEvent, run, onMood, onRemember, onHungry],
+    [config, memories, diary, chatEvents, onChatEvent, impressions, run, onMood, onRemember, onHungry],
   );
 
   const clear = useCallback(() => {
