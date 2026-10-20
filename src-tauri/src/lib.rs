@@ -1242,6 +1242,202 @@ async fn bili_reply_to(
     }))
 }
 
+
+/// 私信会话列表（只取单聊）。
+#[tauri::command]
+async fn bili_dm_sessions(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    let cookie = load_bili_cookie(&app).ok_or("还没登录 B 站")?;
+    let cookie_header = format!(
+        "SESSDATA={}; bili_jct={}; buvid3={}; DedeUserID={}",
+        cookie.sessdata, cookie.bili_jct, cookie.buvid3, cookie.dedeuserid
+    );
+    let url = "https://api.vc.bilibili.com/session_svr/v1/session_svr/get_sessions?session_type=1&group_id=0&pn=1&ps=30&build=0&mobi_app=web";
+    let resp = bili_client()?
+        .get(url)
+        .header("Referer", "https://message.bilibili.com/")
+        .header("Cookie", cookie_header)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let code = take_i64(&resp, "code");
+    if code != 0 {
+        return Err(format!("私信会话接口 code={code}"));
+    }
+
+    let list = resp
+        .get("data")
+        .and_then(|d| d.get("session_list"))
+        .and_then(|x| x.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    let out: Vec<serde_json::Value> = list
+        .iter()
+        .map(|s| {
+            let last = s.get("last_msg").cloned().unwrap_or(serde_json::Value::Null);
+            // last_msg.content 本身是个 JSON 字符串（形如 {"content":"..."}），得再解一层
+            let raw = last.get("content").and_then(|x| x.as_str()).unwrap_or("");
+            let last_content = serde_json::from_str::<serde_json::Value>(raw)
+                .ok()
+                .and_then(|v| v.get("content").and_then(|x| x.as_str()).map(|s| s.to_string()))
+                .unwrap_or_else(|| raw.to_string());
+            serde_json::json!({
+                "talkerId": s.get("talker_id").and_then(|x| x.as_i64()).unwrap_or(0),
+                "unread": s.get("unread_count").and_then(|x| x.as_i64()).unwrap_or(0),
+                "timestamp": s.get("session_ts").and_then(|x| x.as_i64()).unwrap_or(0),
+                "lastContent": last_content,
+                "lastSenderUid": last.get("sender_uid").and_then(|x| x.as_i64()).unwrap_or(0),
+            })
+        })
+        .filter(|v| {
+            let uid = v.get("talkerId").and_then(|x| x.as_i64()).unwrap_or(0);
+            // 系统通知（登录提醒、活动推送）的 talker_id 是 844424930131964 这种超大数，
+            // 不是真人，不该去回复
+            uid > 0 && uid < 100_000_000_000_000
+        })
+        .collect();
+
+    Ok(serde_json::json!({ "selfUid": cookie.dedeuserid, "sessions": out }))
+}
+
+/// 和某人的私信记录。
+#[tauri::command]
+async fn bili_dm_history(
+    app: tauri::AppHandle,
+    talker_id: i64,
+) -> Result<serde_json::Value, String> {
+    let cookie = load_bili_cookie(&app).ok_or("还没登录 B 站")?;
+    let cookie_header = format!(
+        "SESSDATA={}; bili_jct={}; buvid3={}; DedeUserID={}",
+        cookie.sessdata, cookie.bili_jct, cookie.buvid3, cookie.dedeuserid
+    );
+    let url = format!(
+        "https://api.vc.bilibili.com/svr_sync/v1/svr_sync/fetch_session_msgs?talker_id={talker_id}&session_type=1&size=20&build=0&mobi_app=web"
+    );
+    let resp = bili_client()?
+        .get(url)
+        .header("Referer", "https://message.bilibili.com/")
+        .header("Cookie", cookie_header)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let code = take_i64(&resp, "code");
+    if code != 0 {
+        return Err(format!("私信记录接口 code={code}"));
+    }
+
+    let msgs = resp
+        .get("data")
+        .and_then(|d| d.get("messages"))
+        .and_then(|x| x.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    // B 站返回的是倒序，翻过来变成从旧到新
+    let mut out: Vec<serde_json::Value> = msgs
+        .iter()
+        .map(|m| {
+            let raw = m.get("content").and_then(|x| x.as_str()).unwrap_or("");
+            // 同样要解两层：外层是字符串，里面才是 {"content":"..."}
+            let content = serde_json::from_str::<serde_json::Value>(raw)
+                .ok()
+                .and_then(|v| v.get("content").and_then(|x| x.as_str()).map(|s| s.to_string()))
+                .unwrap_or_else(|| raw.to_string());
+            serde_json::json!({
+                "senderUid": m.get("sender_uid").and_then(|x| x.as_i64()).unwrap_or(0),
+                "timestamp": m.get("timestamp").and_then(|x| x.as_i64()).unwrap_or(0),
+                "content": content,
+                "msgType": m.get("msg_type").and_then(|x| x.as_i64()).unwrap_or(0),
+            })
+        })
+        .filter(|m| m.get("msgType").and_then(|x| x.as_i64()).unwrap_or(0) == 1)
+        .collect();
+    out.reverse();
+
+    Ok(serde_json::json!({ "selfUid": cookie.dedeuserid, "messages": out }))
+}
+
+/// 发一条私信。
+#[tauri::command]
+async fn bili_dm_send(
+    app: tauri::AppHandle,
+    receiver_id: i64,
+    content: String,
+) -> Result<serde_json::Value, String> {
+    let cookie = load_bili_cookie(&app).ok_or("还没登录 B 站")?;
+    let text = content.trim();
+    if text.is_empty() {
+        return Err("内容为空".into());
+    }
+    let cookie_header = format!(
+        "SESSDATA={}; bili_jct={}; buvid3={}; DedeUserID={}",
+        cookie.sessdata, cookie.bili_jct, cookie.buvid3, cookie.dedeuserid
+    );
+
+    // dev_id 必须是稳定的 UUID 形状，每次随机会导致对方收到重复会话
+    let dev_id = if cookie.buvid3.len() >= 32 {
+        let b = &cookie.buvid3;
+        let clean: String = b.chars().filter(|c| c.is_ascii_hexdigit()).collect();
+        if clean.len() >= 32 {
+            format!(
+                "{}-{}-{}-{}-{}",
+                &clean[0..8],
+                &clean[8..12],
+                &clean[12..16],
+                &clean[16..20],
+                &clean[20..32]
+            )
+        } else {
+            "00000000-0000-0000-0000-000000000000".to_string()
+        }
+    } else {
+        "00000000-0000-0000-0000-000000000000".to_string()
+    };
+
+    let payload = serde_json::json!({ "content": text });
+    let form = [
+        ("msg[sender_uid]", cookie.dedeuserid.clone()),
+        ("msg[receiver_id]", receiver_id.to_string()),
+        ("msg[receiver_type]", "1".to_string()),
+        ("msg[msg_type]", "1".to_string()),
+        ("msg[dev_id]", dev_id),
+        ("msg[timestamp]", (now_ms() / 1000).to_string()),
+        ("msg[content]", payload.to_string()),
+        ("csrf", cookie.bili_jct.clone()),
+        ("csrf_token", cookie.bili_jct.clone()),
+        ("build", "0".to_string()),
+        ("mobi_app", "web".to_string()),
+    ];
+
+    let resp = bili_client()?
+        .post("https://api.vc.bilibili.com/web_im/v1/web_im/send_msg")
+        .header("Referer", "https://message.bilibili.com/")
+        .header("Origin", "https://message.bilibili.com")
+        .header("Cookie", cookie_header)
+        .form(&form)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let code = take_i64(&resp, "code");
+    Ok(serde_json::json!({
+        "ok": code == 0,
+        "code": code,
+        "message": take_str(&resp, "message"),
+    }))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -1281,6 +1477,9 @@ pub fn run() {
             bili_replies_of,
             bili_reply_to,
             bili_my_replies,
+            bili_dm_sessions,
+            bili_dm_history,
+            bili_dm_send,
             bili_emotes
         ])
         .on_window_event(|window, event| {

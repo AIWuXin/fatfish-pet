@@ -19,6 +19,7 @@ import { addDiary, loadDiary, type DiaryEntry } from './services/diary';
 import { incReplyCount, loadReplyCount } from './services/reply-limit';
 import { browsedTodayCount, commentQuota } from './services/quota';
 import { handleReplies } from './services/social';
+import { dmLeft, handleDms, loadQuota } from './services/dm';
 import { addChatEvent, loadChatEvents, type ChatEvent } from './services/recall';
 import { loadImpressions, reflect, removeImpression, type Impression } from './services/impressions';
 
@@ -165,6 +166,41 @@ export default function App() {
           say(social.lines.join('\n'), 10000);
         }
         return social.replied;
+      } catch {
+        return 0;
+      }
+    },
+    [biliLoggedIn, selfMid, settings, budget, controller, say],
+  );
+
+  /**
+   * 处理未读私信。
+   *
+   * 私信比公开评论安全，但也不能一口气回一百个——
+   * 一轮最多三个，每人每天 50 条，发失败立刻停手。
+   */
+  const runDmCheck = useCallback(
+    async (silent = false): Promise<number> => {
+      if (!biliLoggedIn || selfMid === 0) return 0;
+      try {
+        const r = await handleDms({
+          config: settings,
+          budget,
+          selfUid: selfMid,
+          nickname: settings.biliAtName || '主人',
+          onBudgetChange: setBudget,
+          onStatus: (text) => {
+            if (!silent) say(text, 3000);
+          },
+        });
+        if (r.replied > 0) {
+          controller.setMood('happy', 3000);
+          say(r.lines.slice(0, 2).join('\n'), 9000);
+        }
+        if (r.blocked) {
+          console.warn('[dm] 发送被拒:', r.blocked);
+        }
+        return r.replied;
       } catch {
         return 0;
       }
@@ -357,15 +393,17 @@ export default function App() {
     if (!biliLoggedIn || selfMid === 0) return;
     const first = window.setTimeout(() => {
       void runSocialCheck(true);
+      void runDmCheck(true);
     }, 30000);
     const ticker = window.setInterval(() => {
       void runSocialCheck(false);
+      void runDmCheck(true);
     }, 10 * 60_000);
     return () => {
       window.clearTimeout(first);
       window.clearInterval(ticker);
     };
-  }, [biliLoggedIn, selfMid, runSocialCheck]);
+  }, [biliLoggedIn, selfMid, runSocialCheck, runDmCheck]);
 
   // 到期的事主动开口：每 20 分钟看一次，真正该不该提由 speakPending 自己判断
   useEffect(() => {
@@ -582,6 +620,8 @@ export default function App() {
     (window as unknown as Record<string, unknown>).__petBlocked = () => loadBlocked();
     (window as unknown as Record<string, unknown>).__petPending = () => chat.speakPending();
     (window as unknown as Record<string, unknown>).__petFeed = () => peekFeed();
+    (window as unknown as Record<string, unknown>).__petDm = () => runDmCheck(false);
+    (window as unknown as Record<string, unknown>).__petDmQuota = () => ({ quota: loadQuota(), left: dmLeft(325031572) });
     (window as unknown as Record<string, unknown>).__petReflect = () => runReflect(true);
   }, [runSocialCheck, runReflect]);
 
