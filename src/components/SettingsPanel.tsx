@@ -194,6 +194,61 @@ export function SettingsPanel({
         )}
       </div>
 
+      {/* QQ 群 */}
+      <div className="settings-block">
+        <label className="switch-row">
+          <input
+            type="checkbox"
+            checked={draft.qq}
+            onChange={(e) => setDraft({ ...draft, qq: e.target.checked })}
+          />
+          <span>在 QQ 群里聊天</span>
+        </label>
+        <div className="bili-hint">
+          需要先在本机跑 NapCat（OneBot 接口）。她潜水时会每半小时翻一遍群消息，
+          看到提到自己的就接一句，之后活跃三分钟再潜水。
+        </div>
+        {draft.qq && (
+          <>
+            <label className="field compact">
+              <span>她的 QQ 号</span>
+              <input
+                value={draft.qqSelfId || ''}
+                placeholder="3576356769"
+                onChange={(e) => setDraft({ ...draft, qqSelfId: Number(e.target.value) || 0 })}
+              />
+            </label>
+            <label className="field compact">
+              <span>
+                允许的群号
+                <em className="budget-left">逗号分隔，留空表示所有群</em>
+              </span>
+              <input
+                value={(draft.qqGroups ?? []).join(',')}
+                placeholder="575138626"
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    qqGroups: e.target.value
+                      .split(',')
+                      .map((x) => Number(x.trim()))
+                      .filter((x) => Number.isFinite(x) && x > 0),
+                  })
+                }
+              />
+            </label>
+            <label className="field compact">
+              <span>NapCat 地址</span>
+              <input
+                value={draft.qqWsUrl}
+                placeholder="ws://127.0.0.1:3001"
+                onChange={(e) => setDraft({ ...draft, qqWsUrl: e.target.value })}
+              />
+            </label>
+          </>
+        )}
+      </div>
+
       {impressions.length > 0 && (
         <div className="settings-memories">
           <div className="memories-title">她对你的印象（{impressions.length}）</div>

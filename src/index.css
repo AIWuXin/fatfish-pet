@@ -820,3 +820,13 @@ body {
 .mem-dot.blocked {
   background: #e8834a;
 }
+
+/* QQ 群设置块，和其它设置分组保持同样的分隔感 */
+.settings-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(120, 150, 200, 0.06);
+}

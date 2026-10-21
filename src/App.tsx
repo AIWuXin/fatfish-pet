@@ -20,6 +20,8 @@ import { incReplyCount, loadReplyCount } from './services/reply-limit';
 import { browsedTodayCount, commentQuota } from './services/quota';
 import { handleReplies } from './services/social';
 import { dmLeft, handleDms, loadQuota } from './services/dm';
+import { QqClient } from './services/qq';
+import { GroupWatcher } from './services/qq-group';
 import { addChatEvent, loadChatEvents, type ChatEvent } from './services/recall';
 import { loadImpressions, reflect, removeImpression, type Impression } from './services/impressions';
 
@@ -207,6 +209,71 @@ export default function App() {
     },
     [biliLoggedIn, selfMid, settings, budget, controller, say],
   );
+
+  // ---------------- QQ 群 ----------------
+  const qqRef = useRef<QqClient | null>(null);
+  const groupRef = useRef<GroupWatcher | null>(null);
+  const [qqStatus, setQqStatus] = useState<'off' | 'connecting' | 'on'>('off');
+
+  /**
+   * 连上 NapCat 并把群消息接进来。
+   *
+   * 开关关掉、或者没填 QQ 号时整个不启动——
+   * 不连就不会有任何后台流量，也不会误发消息。
+   */
+  useEffect(() => {
+    if (!settings.qq || !settings.qqSelfId) {
+      groupRef.current?.stop();
+      qqRef.current?.close();
+      qqRef.current = null;
+      groupRef.current = null;
+      setQqStatus('off');
+      return;
+    }
+    if (qqRef.current) return;
+
+    setQqStatus('connecting');
+    const client = new QqClient({
+      wsUrl: settings.qqWsUrl || 'ws://127.0.0.1:3001',
+      selfId: settings.qqSelfId,
+      allowedGroups: settings.qqGroups ?? [],
+    });
+
+    const watcher = new GroupWatcher({
+      client,
+      settings,
+      budget,
+      selfId: settings.qqSelfId,
+      nickname: settings.biliAtName || '主人',
+      allowedGroups: settings.qqGroups ?? [],
+      onBudgetChange: setBudget,
+      onSpeak: (_gid, text) => {
+        controller.setMood('happy', 2500);
+        say(text, 7000);
+      },
+      onLog: (line) => console.info('[qq]', line),
+    });
+
+    const off = client.onMessage((msg) => watcher.ingest(msg));
+    client.onStatus((ok, info) => {
+      setQqStatus(ok ? 'on' : 'connecting');
+      if (!ok && info) console.warn('[qq]', info);
+    });
+
+    client.connect();
+    watcher.start();
+    qqRef.current = client;
+    groupRef.current = watcher;
+
+    return () => {
+      off();
+      watcher.stop();
+      client.close();
+      qqRef.current = null;
+      groupRef.current = null;
+      setQqStatus('off');
+    };
+  }, [settings.qq, settings.qqSelfId, settings.qqWsUrl, settings.qqGroups, settings, budget, controller, say]);
 
   /** 自己去 B 站逛一圈。用 ref 中转，避免 hook 之间循环依赖。 */
   const browsingRef = useRef(false);
@@ -622,6 +689,15 @@ export default function App() {
     (window as unknown as Record<string, unknown>).__petFeed = () => peekFeed();
     (window as unknown as Record<string, unknown>).__petDm = () => runDmCheck(false);
     (window as unknown as Record<string, unknown>).__petDmQuota = () => ({ quota: loadQuota(), left: dmLeft(325031572) });
+    (window as unknown as Record<string, unknown>).__petQq = () => ({
+      status: qqStatus,
+      groups: groupRef.current ? 'watching' : 'idle',
+      detail: groupRef.current?.status ?? null,
+    });
+    (window as unknown as Record<string, unknown>).__petQqGroups = async () => {
+      const r = await qqRef.current?.getGroups();
+      return r ?? 'not connected';
+    };
     (window as unknown as Record<string, unknown>).__petReflect = () => runReflect(true);
   }, [runSocialCheck, runReflect]);
 

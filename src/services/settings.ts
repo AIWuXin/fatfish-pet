@@ -14,6 +14,14 @@ export interface PetSettings {
   biliAtName: string;
   /** 每日评论硬上限。只防风控，跟预算无关；实际配额由剩余大白饭推导 */
   maxCommentsPerDay: number;
+  /** 要不要在 QQ 群里活动 */
+  qq: boolean;
+  /** NapCat 的 OneBot WebSocket 地址 */
+  qqWsUrl: string;
+  /** 她的 QQ 号 */
+  qqSelfId: number;
+  /** 允许活动的群号，空数组表示全部 */
+  qqGroups: number[];
 }
 
 const SETTINGS_KEY = 'fatfish.settings.v1';
@@ -28,6 +36,10 @@ export const DEFAULT_SETTINGS: PetSettings = {
   dailyWanTokens: 1000,
   biliAtName: '喜滋滋小姐的狗',
   maxCommentsPerDay: 20,
+  qq: false,
+  qqWsUrl: 'ws://127.0.0.1:3001',
+  qqSelfId: 0,
+  qqGroups: [],
 };
 
 export function loadSettings(): PetSettings {
