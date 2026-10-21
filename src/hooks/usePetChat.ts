@@ -1,10 +1,10 @@
 import { useCallback, useRef, useState } from 'react';
 import { streamChat, type ChatMessage } from '../services/llm';
-import { PERSONA, buildIdentityBlock, parseReply, stripPartialMarkers } from '../services/persona';
-import { buildMemoryBlock, type MemoryItem } from '../services/memory';
-import { buildDiaryBlock, type DiaryEntry } from '../services/diary';
+import { parseReply, stripPartialMarkers } from '../services/persona';
+import type { MemoryItem } from '../services/memory';
+import type { DiaryEntry } from '../services/diary';
 import { asksForMemory, buildRecallBlock, recall, type ChatEvent } from '../services/recall';
-import { buildImpressionBlock, type Impression } from '../services/impressions';
+import type { Impression } from '../services/impressions';
 import type { PetSettings } from '../services/settings';
 import {
   recordUsage,
@@ -14,7 +14,6 @@ import {
   type BudgetState,
 } from '../services/budget';
 import {
-  buildMoodBlock,
   loadMood,
   markOutburst,
   onInteraction,
@@ -22,7 +21,7 @@ import {
   saveMood,
   shouldOutburst,
 } from '../services/mood-state';
-import { buildClockBlock, readClock } from '../services/circadian';
+import { buildSystemPrompt } from '../services/prompt';
 import {
   buildPendingBlock,
   duePending,
@@ -276,27 +275,22 @@ export function usePetChat({
 
       // 心情、时间、惦记的事：每轮现算，不缓存
       const now = Date.now();
-      const clock = readClock(new Date(now));
       const moodState = onReturn(loadMood(), now);
       const outburst = shouldOutburst(moodState, now);
       const pendingList = loadPending();
 
       const system: ChatMessage = {
         role: 'system',
-        content:
-          PERSONA +
-          buildIdentityBlock({
-            real: 'wuxin',
-            biliName: config.biliAtName || undefined,
-            qqName: '',
-          }) +
-          buildMemoryBlock(memories) +
-          buildDiaryBlock(diary) +
-          buildRecallBlock(hits) +
-          buildImpressionBlock(impressions) +
-          buildClockBlock(clock) +
-          buildMoodBlock(moodState, outburst, now) +
-          buildPendingBlock(pendingList, now),
+        content: buildSystemPrompt({
+          scene: 'chat',
+          identity: { real: 'wuxin', biliName: config.biliAtName || undefined },
+          memories,
+          diary,
+          impressions,
+          recallBlock: buildRecallBlock(hits),
+          pendingBlock: buildPendingBlock(pendingList, now),
+          outburst,
+        }),
       };
 
       const dueNow = duePending(pendingList, now);
@@ -371,16 +365,15 @@ export function usePetChat({
     async (hint: string): Promise<string | null> => {
       if (!config.apiKey || !config.endpoint || !config.model) return null;
 
-      const nowMs = Date.now();
       const payload: ChatMessage[] = [
         {
           role: 'system',
-          content:
-            PERSONA +
-            buildMemoryBlock(memories) +
-            buildDiaryBlock(diary) +
-            buildClockBlock(readClock(new Date(nowMs))) +
-            buildMoodBlock(onReturn(loadMood(), nowMs), false, nowMs),
+          content: buildSystemPrompt({
+            scene: 'proactive',
+            identity: { real: 'wuxin', biliName: config.biliAtName || undefined },
+            memories,
+            diary,
+          }),
         },
         { role: 'user', content: hint },
       ];

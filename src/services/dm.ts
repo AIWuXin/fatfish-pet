@@ -14,10 +14,9 @@
  */
 
 import { invoke } from '@tauri-apps/api/core';
-import { PERSONA, parseReply } from './persona';
-import { buildClockBlock, readClock } from './circadian';
-import { buildMoodBlock, loadMood, onReturn } from './mood-state';
-import { UNTRUSTED_NOTICE, looksLikeInjection, wrapUntrusted } from './untrusted';
+import { parseReply } from './persona';
+import { buildSystemPrompt } from './prompt';
+import { looksLikeInjection, wrapUntrusted } from './untrusted';
 import { estimateTokens, recordUsage, remainingTokens, type BudgetState } from './budget';
 import { streamChat } from './llm';
 import type { PetSettings } from './settings';
@@ -184,12 +183,11 @@ async function composeDm(
   const payload = [
     {
       role: 'system' as const,
-      content:
-        PERSONA +
-        DM_PERSONA +
-        UNTRUSTED_NOTICE +
-        buildClockBlock(readClock()) +
-        buildMoodBlock(onReturn(loadMood()), false),
+      content: buildSystemPrompt({
+        scene: 'dm',
+        scenePersona: DM_PERSONA,
+        identity: { real: 'wuxin', biliName: opts.config.biliAtName || undefined },
+      }),
     },
     {
       role: 'user' as const,

@@ -18,10 +18,9 @@ import type { PetSettings } from './settings';
 import type { BudgetState } from './budget';
 import { estimateTokens, recordUsage, remainingTokens } from './budget';
 import { streamChat } from './llm';
-import { PERSONA, parseReply } from './persona';
-import { buildClockBlock, readClock } from './circadian';
-import { buildMoodBlock, loadMood, onReturn } from './mood-state';
-import { UNTRUSTED_NOTICE, looksLikeInjection, wrapUntrusted } from './untrusted';
+import { parseReply } from './persona';
+import { buildSystemPrompt } from './prompt';
+import { looksLikeInjection, wrapUntrusted } from './untrusted';
 import type { QqClient, QqMessage } from './qq';
 
 /** 潜水时多久扫一次 */
@@ -302,12 +301,11 @@ export class GroupWatcher {
     const payload = [
       {
         role: 'system' as const,
-        content:
-          PERSONA +
-          GROUP_PERSONA +
-          UNTRUSTED_NOTICE +
-          buildClockBlock(readClock()) +
-          buildMoodBlock(onReturn(loadMood()), false),
+        content: buildSystemPrompt({
+          scene: 'group',
+          scenePersona: GROUP_PERSONA,
+          identity: { real: this.opts.getSettings().biliAtName ? 'wuxin' : 'wuxin', biliName: this.opts.getSettings().biliAtName || undefined },
+        }),
       },
       {
         role: 'user' as const,
@@ -371,12 +369,11 @@ ${mode === 'scan' ? '你潜水了半小时，刚翻到这段。' : '你刚在群
       const payload = [
         {
           role: 'system' as const,
-          content:
-            PERSONA +
-            GROUP_PERSONA +
-            UNTRUSTED_NOTICE +
-            buildClockBlock(readClock()) +
-            buildMoodBlock(onReturn(loadMood()), false),
+          content: buildSystemPrompt({
+            scene: 'group',
+            scenePersona: GROUP_PERSONA,
+            identity: { real: 'wuxin', biliName: this.opts.getSettings().biliAtName || undefined },
+          }),
         },
         {
           role: 'user' as const,

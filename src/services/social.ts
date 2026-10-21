@@ -19,8 +19,8 @@
 import { invoke } from '@tauri-apps/api/core';
 import { replyTo } from './bilibili';
 import { streamChat, type ChatMessage } from './llm';
-import { PERSONA } from './persona';
-import { UNTRUSTED_NOTICE, looksLikeInjection, wrapUntrusted } from './untrusted';
+import { looksLikeInjection, wrapUntrusted } from './untrusted';
+import { buildSystemPrompt } from './prompt';
 import { estimateTokens, recordUsage, remainingTokens, type BudgetState } from './budget';
 import { emoteHint, loadEmotes, sanitizeEmotes, stripMoodLeak } from './emotes';
 import type { PetSettings } from './settings';
@@ -122,7 +122,10 @@ async function composeReply(
   }
 
   const payload: ChatMessage[] = [
-    { role: 'system', content: PERSONA + REPLY_PERSONA + UNTRUSTED_NOTICE + emoteHint(emotes) },
+    {
+      role: 'system',
+      content: buildSystemPrompt({ scene: 'reply', scenePersona: REPLY_PERSONA }) + emoteHint(emotes),
+    },
     {
       role: 'user',
       content: `（系统旁白，不是对方说的话）

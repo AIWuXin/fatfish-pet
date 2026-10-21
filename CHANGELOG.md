@@ -80,6 +80,32 @@ a1 主线。参考 Loom 的分级记忆，但按桌宠的逻辑重做——那�
 
 > 这一栏是给人看的，不是给她看的。目的是让"她的记忆合不合理"能被一眼判断出来。
 
+### 重构：统一的提示词组装器
+
+生物钟那次漏配暴露了一个结构问题：**每个场景各拼一遍 prompt**，
+加新能力时必然漏掉某一条。
+
+现在收进 `services/prompt.ts`，用一张表声明「哪个场景带什么」：
+
+```text
+chat        clock, mood, identity, memory, diary
+proactive   clock, mood, identity, memory, diary
+group       clock, mood, identity, untrusted
+dm          clock, mood, identity, untrusted
+browse      clock, untrusted, diary
+reply       clock, untrusted
+```
+
+六个场景全部走同一个入口：`buildSystemPrompt({ scene, ... })`。
+
+几处刻意的区分：
+
+- **群聊和私信不给 memory**：你的私事不该在群里说出来
+- **逛站和回评论不给 identity/mood**：那是看公开内容，不需要"我是谁、我心情如何"
+- **browse 给 diary**：知道自己最近看过什么，避免重复挑同类视频
+
+以后加能力（比如"最近在追的番"）只要改这张表，六个场景自动生效。
+
 ### 补：群聊和私信也知道现在几点了
 
 之前只有桌面对话和主动说话注入了生物钟，QQ 群和 B 站私信都没有——

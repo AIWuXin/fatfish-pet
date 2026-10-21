@@ -1,9 +1,9 @@
 import { streamChat, type ChatMessage } from './llm';
-import { PERSONA } from './persona';
 import { estimateTokens, recordUsage, remainingTokens, type BudgetState } from './budget';
 import type { PetSettings } from './settings';
-import { buildDiaryBlock, type DiaryEntry } from './diary';
-import { UNTRUSTED_NOTICE, looksLikeInjection, wrapUntrusted } from './untrusted';
+import type { DiaryEntry } from './diary';
+import { looksLikeInjection, wrapUntrusted } from './untrusted';
+import { buildSystemPrompt } from './prompt';
 import { emoteHint, loadEmotes, sanitizeEmotes, stripMoodLeak } from './emotes';
 import {
   fetchComments,
@@ -331,7 +331,14 @@ export async function browseBilibili(opts: BrowseOptions): Promise<BrowseResult 
   // 第一步：让她自己挑，并给一个很短的初步反应
   const pick = await collect(
     [
-      { role: 'system', content: PERSONA + BROWSING_PERSONA + UNTRUSTED_NOTICE + buildDiaryBlock(opts.diary) },
+      {
+        role: 'system',
+        content: buildSystemPrompt({
+          scene: 'browse',
+          scenePersona: BROWSING_PERSONA,
+          diary: opts.diary,
+        }),
+      },
       {
         role: 'user',
         content: `（系统旁白，不是鱼片说的话）
@@ -407,7 +414,12 @@ ${brief}
     [
       {
         role: 'system',
-        content: PERSONA + BROWSING_PERSONA + UNTRUSTED_NOTICE + emoteHint(emotes) + buildDiaryBlock(opts.diary),
+        content:
+          buildSystemPrompt({
+            scene: 'browse',
+            scenePersona: BROWSING_PERSONA,
+            diary: opts.diary,
+          }) + emoteHint(emotes),
       },
       {
         role: 'user',
