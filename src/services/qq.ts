@@ -61,6 +61,8 @@ export class QqClient {
   private reconnectTimer = 0;
   private closed = false;
   private connected = false;
+  /** 自己的昵称，@ 解析不出 QQ 号时用来兜底认人 */
+  private selfName = '';
 
   constructor(private cfg: QqConfig) {}
 
@@ -103,6 +105,15 @@ export class QqClient {
     ws.onopen = () => {
       this.connected = true;
       this.emitStatus(true);
+      // 拉一下自己的昵称，@ 兜底要用
+      void this.call('get_login_info')
+        .then((d) => {
+          const info = d as Record<string, unknown> | null;
+          if (info && typeof info.nickname === 'string') this.selfName = info.nickname;
+        })
+        .catch(() => {
+          /* 拿不到就算了，还有硬编码的兜底 */
+        });
     };
 
     ws.onclose = () => {
@@ -193,20 +204,39 @@ export class QqClient {
     let text = '';
     let atMe = false;
     let atOthers = false;
+    let atUnknown = '';
 
     for (const seg of segments as QqSegment[]) {
       if (!seg || typeof seg !== 'object') continue;
       if (seg.type === 'text') {
         text += String((seg.data as Record<string, unknown>)?.text ?? '');
       } else if (seg.type === 'at') {
-        const qq = Number((seg.data as Record<string, unknown>)?.qq ?? 0);
-        if (qq === this.cfg.selfId) atMe = true;
-        else atOthers = true;
+        const d = (seg.data ?? {}) as Record<string, unknown>;
+        const qq = Number(d.qq ?? 0);
+        if (qq === this.cfg.selfId) {
+          atMe = true;
+        } else if (qq === 0 || d.qq === 'all') {
+          // NapCat 有时解析不出被 @ 的人（qq 给 0），先把名片记下来
+          atUnknown = String(d.name ?? '');
+          if (d.qq === 'all') atOthers = true;
+        } else {
+          atOthers = true;
+        }
       } else if (seg.type === 'face') {
         text += '[表情]';
       } else if (seg.type === 'image') {
         text += '[图片]';
       }
+    }
+
+    // 兜底：@ 没带 QQ 号时，用她的昵称/群名片去认
+    if (!atMe && atUnknown) {
+      if (atUnknown === this.selfName || atUnknown.includes('大肥鱼') || /肥鱼|小鱼|鲸鱼/.test(atUnknown)) {
+        atMe = true;
+      }
+    }
+    if (!atMe && /[@＠]\s*(是你的)?大肥鱼|[@＠]\s*肥鱼|[@＠]\s*小鱼/.test(text)) {
+      atMe = true;
     }
 
     const sender = (raw.sender ?? {}) as Record<string, unknown>;

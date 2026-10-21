@@ -1438,6 +1438,56 @@ async fn bili_dm_send(
     }))
 }
 
+
+/// 读 NapCat 的登录二维码。
+///
+/// 每次重启 NapCat 都要去资源管理器翻 qrcode.png 太麻烦，
+/// 直接把它读成 data URL 给设置面板显示。
+/// 返回里带 mtime，前端据此判断是不是过期了。
+#[tauri::command]
+fn napcat_qrcode(path: Option<String>) -> Result<serde_json::Value, String> {
+    let p = path.unwrap_or_else(|| "E:/agent/napcat/cache/qrcode.png".to_string());
+    let meta = std::fs::metadata(&p).map_err(|e| format!("找不到二维码文件：{e}"))?;
+    let data = std::fs::read(&p).map_err(|e| format!("读不到二维码：{e}"))?;
+    let modified = meta
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+
+    // 手写一个 base64，省得为这一件事加依赖
+    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(data.len() * 4 / 3 + 4);
+    for chunk in data.chunks(3) {
+        let b = [chunk[0], *chunk.get(1).unwrap_or(&0), *chunk.get(2).unwrap_or(&0)];
+        let n = ((b[0] as u32) << 16) | ((b[1] as u32) << 8) | (b[2] as u32);
+        out.push(T[((n >> 18) & 63) as usize] as char);
+        out.push(T[((n >> 12) & 63) as usize] as char);
+        out.push(if chunk.len() > 1 { T[((n >> 6) & 63) as usize] as char } else { '=' });
+        out.push(if chunk.len() > 2 { T[(n & 63) as usize] as char } else { '=' });
+    }
+
+    Ok(serde_json::json!({
+        "ok": true,
+        "mtime": modified,
+        "dataUrl": format!("data:image/png;base64,{out}"),
+    }))
+}
+
+/// NapCat 是否在跑（看 OneBot 的 WS 端口通不通）。
+#[tauri::command]
+fn napcat_alive(port: Option<u16>) -> serde_json::Value {
+    let port = port.unwrap_or(3001);
+    let addr = format!("127.0.0.1:{port}");
+    let ok = std::net::TcpStream::connect_timeout(
+        &addr.parse().unwrap_or_else(|_| "127.0.0.1:3001".parse().unwrap()),
+        std::time::Duration::from_millis(600),
+    )
+    .is_ok();
+    serde_json::json!({ "alive": ok })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -1480,6 +1530,8 @@ pub fn run() {
             bili_dm_sessions,
             bili_dm_history,
             bili_dm_send,
+            napcat_qrcode,
+            napcat_alive,
             bili_emotes
         ])
         .on_window_event(|window, event| {

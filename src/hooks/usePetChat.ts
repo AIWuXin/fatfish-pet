@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { streamChat, type ChatMessage } from '../services/llm';
-import { PERSONA, parseReply, stripPartialMarkers } from '../services/persona';
+import { PERSONA, buildIdentityBlock, parseReply, stripPartialMarkers } from '../services/persona';
 import { buildMemoryBlock, type MemoryItem } from '../services/memory';
 import { buildDiaryBlock, type DiaryEntry } from '../services/diary';
 import { asksForMemory, buildRecallBlock, recall, type ChatEvent } from '../services/recall';
@@ -285,6 +285,11 @@ export function usePetChat({
         role: 'system',
         content:
           PERSONA +
+          buildIdentityBlock({
+            real: 'wuxin',
+            biliName: config.biliAtName || undefined,
+            qqName: '',
+          }) +
           buildMemoryBlock(memories) +
           buildDiaryBlock(diary) +
           buildRecallBlock(hits) +

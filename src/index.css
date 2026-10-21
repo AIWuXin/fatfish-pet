@@ -830,3 +830,26 @@ body {
   border-radius: 10px;
   background: rgba(120, 150, 200, 0.06);
 }
+
+/* QQ 登录二维码 */
+.qr-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.7);
+}
+.qr-img {
+  width: 168px;
+  height: 168px;
+  image-rendering: pixelated;
+  border-radius: 6px;
+}
+.qr-hint {
+  font-size: 11px;
+  line-height: 1.5;
+  color: rgba(70, 90, 120, 0.75);
+  text-align: center;
+}

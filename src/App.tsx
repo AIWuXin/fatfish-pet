@@ -211,6 +211,11 @@ export default function App() {
   );
 
   // ---------------- QQ 群 ----------------
+  // 用 ref 兜住随时会变的设置与预算，避免它们进 effect 依赖导致连接抖动
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+  const budgetRef = useRef(budget);
+  budgetRef.current = budget;
   const qqRef = useRef<QqClient | null>(null);
   const groupRef = useRef<GroupWatcher | null>(null);
   const [qqStatus, setQqStatus] = useState<'off' | 'connecting' | 'on'>('off');
@@ -241,8 +246,8 @@ export default function App() {
 
     const watcher = new GroupWatcher({
       client,
-      settings,
-      budget,
+      getSettings: () => settingsRef.current,
+      getBudget: () => budgetRef.current,
       selfId: settings.qqSelfId,
       nickname: settings.biliAtName || '主人',
       allowedGroups: settings.qqGroups ?? [],
@@ -273,7 +278,9 @@ export default function App() {
       groupRef.current = null;
       setQqStatus('off');
     };
-  }, [settings.qq, settings.qqSelfId, settings.qqWsUrl, settings.qqGroups, settings, budget, controller, say]);
+    // 依赖里不放 settings/budget —— 每次记账都会变，会导致连接反复重建
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.qq, settings.qqSelfId, settings.qqWsUrl, JSON.stringify(settings.qqGroups)]);
 
   /** 自己去 B 站逛一圈。用 ref 中转，避免 hook 之间循环依赖。 */
   const browsingRef = useRef(false);

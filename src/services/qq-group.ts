@@ -97,8 +97,10 @@ const GROUP_PERSONA = `
 
 export interface GroupWatcherOptions {
   client: QqClient;
-  settings: PetSettings;
-  budget: BudgetState;
+  /** 用 getter 而不是直接持有对象：设置和预算随时会变，
+   *  而且外层如果把它们放进 useEffect 依赖，每次记账都会重建连接 */
+  getSettings: () => PetSettings;
+  getBudget: () => BudgetState;
   selfId: number;
   nickname: string;
   /** 允许活动的群。空数组表示全部 */
@@ -123,7 +125,9 @@ export class GroupWatcher {
 
   start(): void {
     this.disposed = false;
-    this.lastScanAt = Date.now();
+    // 启动 1 分钟先扫一次：刚上线时群里可能已经有话在等她，
+    // 等满 30 分钟才第一次扫，体感上就是「她毫无反应」
+    this.lastScanAt = Date.now() - SCAN_INTERVAL_MS + 60_000;
     // 每 15 秒看一次：该扫描了吗 / 活跃期过了吗
     this.statusTimer = window.setInterval(() => {
       void this.tickStatus();
@@ -253,12 +257,12 @@ ${mode === 'scan' ? '你潜水了半小时，刚翻到这段。' : '你刚在群
     ];
 
     const inputCost = payload.reduce((sum, m) => sum + estimateTokens(m.content) + 4, 0);
-    if (remainingTokens(this.opts.budget) < inputCost + 100) return false;
+    if (remainingTokens(this.opts.getBudget()) < inputCost + 100) return false;
 
     let acc = '';
     let usage = 0;
     try {
-      for await (const ev of streamChat(payload, this.opts.settings)) {
+      for await (const ev of streamChat(payload, this.opts.getSettings())) {
         if (ev.type === 'delta' && ev.content) acc += ev.content;
         else if (ev.type === 'usage') usage = (ev.promptTokens ?? 0) + (ev.completionTokens ?? 0);
         else if (ev.type === 'error' || ev.type === 'done') break;
@@ -268,7 +272,7 @@ ${mode === 'scan' ? '你潜水了半小时，刚翻到这段。' : '你刚在群
     }
 
     const spent = usage > 0 ? usage : inputCost + estimateTokens(acc);
-    if (spent > 0) this.opts.onBudgetChange(recordUsage(this.opts.budget, spent));
+    if (spent > 0) this.opts.onBudgetChange(recordUsage(this.opts.getBudget(), spent));
 
     const m = acc.match(/\{[\s\S]*\}/);
     if (!m) return false;
@@ -311,18 +315,18 @@ ${mode === 'at' ? '有人 @ 了你，回一句。' : '接着上面的话茬说�
       ];
 
       const inputCost = payload.reduce((sum, m) => sum + estimateTokens(m.content) + 4, 0);
-      if (remainingTokens(this.opts.budget) < inputCost + 100) return;
+      if (remainingTokens(this.opts.getBudget()) < inputCost + 100) return;
 
       let acc = '';
       let usage = 0;
-      for await (const ev of streamChat(payload, this.opts.settings)) {
+      for await (const ev of streamChat(payload, this.opts.getSettings())) {
         if (ev.type === 'delta' && ev.content) acc += ev.content;
         else if (ev.type === 'usage') usage = (ev.promptTokens ?? 0) + (ev.completionTokens ?? 0);
         else if (ev.type === 'error' || ev.type === 'done') break;
       }
 
       const spent = usage > 0 ? usage : inputCost + estimateTokens(acc);
-      if (spent > 0) this.opts.onBudgetChange(recordUsage(this.opts.budget, spent));
+      if (spent > 0) this.opts.onBudgetChange(recordUsage(this.opts.getBudget(), spent));
 
       const text = acc.replace(/^["「]|["」]$/g, '').trim().slice(0, MAX_CHARS);
       if (!text) return;

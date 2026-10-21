@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import type { PetSettings } from '../services/settings';
 import type { MemoryItem } from '../services/memory';
@@ -42,6 +42,37 @@ export function SettingsPanel({
 }: SettingsPanelProps) {
   const [draft, setDraft] = useState(settings);
   const [importNote, setImportNote] = useState<string | null>(null);
+  // QQ 登录：打开后每 3 秒刷一次二维码，登录成功（WS 端口通了）就收起来
+  const [qrOpen, setQrOpen] = useState(false);
+  const [qr, setQr] = useState<{ dataUrl: string; mtime: number } | null>(null);
+  const [qrErr, setQrErr] = useState('');
+  const [qqAlive, setQqAlive] = useState(false);
+
+  useEffect(() => {
+    if (!qrOpen) return;
+    let stop = false;
+    const load = async () => {
+      try {
+        const a = await invoke<{ alive: boolean }>('napcat_alive', { port: 3001 });
+        if (stop) return;
+        setQqAlive(a.alive);
+        if (a.alive) return; // 已经登录了，不用再显示码
+        const r = await invoke<{ dataUrl: string; mtime: number }>('napcat_qrcode');
+        if (!stop) {
+          setQr(r);
+          setQrErr('');
+        }
+      } catch (e) {
+        if (!stop) setQrErr(e instanceof Error ? e.message : String(e));
+      }
+    };
+    void load();
+    const t = window.setInterval(load, 3000);
+    return () => {
+      stop = true;
+      window.clearInterval(t);
+    };
+  }, [qrOpen]);
 
   const handleImport = async () => {
     try {
@@ -245,6 +276,31 @@ export function SettingsPanel({
                 onChange={(e) => setDraft({ ...draft, qqWsUrl: e.target.value })}
               />
             </label>
+
+            <div className="bili-row">
+              <span className="bili-state">{qqAlive ? 'QQ：已登录' : 'QQ：未登录'}</span>
+              <button className="text-btn" onClick={() => setQrOpen((v) => !v)}>
+                {qrOpen ? '收起' : '登录 QQ'}
+              </button>
+            </div>
+
+            {qrOpen && (
+              <div className="qr-box">
+                {qqAlive ? (
+                  <div className="qr-hint">已经登录了，不用再扫码。</div>
+                ) : qr ? (
+                  <>
+                    <img className="qr-img" src={qr.dataUrl} alt="QQ 登录二维码" />
+                    <div className="qr-hint">
+                      {Math.max(0, Math.round((Date.now() - qr.mtime) / 1000))} 秒前刷新，
+                      过期会自动换新的，直接扫当前这张。
+                    </div>
+                  </>
+                ) : (
+                  <div className="qr-hint">{qrErr || '还没拿到二维码，先确认 NapCat 已经启动。'}</div>
+                )}
+              </div>
+            )}
           </>
         )}
       </div>

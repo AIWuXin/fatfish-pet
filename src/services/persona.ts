@@ -31,6 +31,40 @@ happy（开心）、excited（兴奋）、sad（低落）、angry（生气）、
 用一句话自然地回应，并在回复最末尾再加一行：[[remember:要记住的内容]]
 这一行同样不会显示。`;
 
+/**
+ * 主人是谁。
+ *
+ * 之前只把人设里写死的 "wuxin" 告诉她，于是她在别处看到
+ * 「喜滋滋小姐的狗」时，会当成一个陌生人来议论——
+ * 实际上那是同一个人。
+ *
+ * 这里把各种场合的名字都列清楚，并明确说"都是他"。
+ */
+export function buildIdentityBlock(names: {
+  real: string;
+  biliName?: string;
+  qqName?: string;
+}): string {
+  const aliases: string[] = [];
+  if (names.biliName && names.biliName !== names.real) {
+    aliases.push(`B 站上叫「${names.biliName}」`);
+  }
+  if (names.qqName && names.qqName !== names.real) {
+    aliases.push(`QQ 上叫「${names.qqName}」`);
+  }
+  if (aliases.length === 0) return '';
+
+  return `
+
+## 你的主人是谁（重要）
+他叫 **${names.real}**，你平时就这么喊他。
+他在别的场合还有名字：${aliases.join('，')}。
+
+**这些名字指的是同一个人。**
+如果有人提到这些名字，那就是在说他——不要当成陌生人，也不要说「我只认识 ${names.real}」这种话。
+你自己在外面用的账号叫「大肥鱼」，跟他不是一个人。`;
+}
+
 /** 从回复里剥掉内部标记，返回干净文本 + 情绪 + 待记忆条目。 */
 export function parseReply(raw: string): {
   text: string;
