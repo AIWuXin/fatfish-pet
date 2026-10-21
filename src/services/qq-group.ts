@@ -139,6 +139,10 @@ export class GroupWatcher {
   private lastScanAt = 0;
   private lastSpeakAt = new Map<number, number>();
   private busy = false;
+  /** 处理过的消息 id，防止同一条消息被回两次 */
+  private handled = new Set<number>();
+  /** 每个群最后回复到哪条消息，活跃期不重复接同一段 */
+  private lastRepliedMsgId = new Map<number, number>();
   private scanTimer = 0;
   private statusTimer = 0;
   private disposed = false;
@@ -183,6 +187,17 @@ export class GroupWatcher {
     if (msg.userId === this.opts.selfId) return;
     if (msg.text.trim().length === 0) return;
 
+    // 同一条消息只处理一次。WS 断线重连或者 NapCat 重推时，
+    // 不加这层会把同一句 @ 回好几遍。
+    if (msg.messageId > 0) {
+      if (this.handled.has(msg.messageId)) return;
+      this.handled.add(msg.messageId);
+      if (this.handled.size > 600) {
+        const keep = Array.from(this.handled).slice(-400);
+        this.handled = new Set(keep);
+      }
+    }
+
     // 主人的话不做注入筛查——那是本人，不是外人
     const fromOwner = this.opts.ownerIds.includes(msg.userId);
     // 其他人的注入话术不进缓存，也不触发
@@ -193,14 +208,20 @@ export class GroupWatcher {
     if (list.length > BUFFER_MAX) list.splice(0, list.length - BUFFER_MAX);
     this.buffer.set(msg.groupId, list);
 
-    // 被 @ 一律立刻处理，不看模式；主人开口也一样
+    // 被 @ 一律立刻处理，不看模式；主人开口也一样。
+    // 但加一道短冷却：连发好几条 @ 时只回一次，别把同一句话重复答几遍。
     if (msg.atMe || fromOwner) {
+      const lastAt = this.lastSpeakAt.get(msg.groupId) ?? 0;
+      if (Date.now() - lastAt < 8000) return;
       void this.replyNow(msg, 'at');
       return;
     }
 
-    // 活跃期：懒一点，攒两句再判断
+    // 活跃期：懒一点，攒两句再判断。
+    // 但只对「自己上次说完之后的新消息」动心，否则同一段话会被反复接。
     if (this.mode === 'active' && Date.now() < this.activeUntil) {
+      const spoken = this.lastRepliedMsgId.get(msg.groupId) ?? 0;
+      if (msg.messageId > 0 && msg.messageId <= spoken) return;
       const recent = list.slice(-6);
       const lastMySpeak = this.lastSpeakAt.get(msg.groupId) ?? 0;
       if (Date.now() - lastMySpeak > GROUP_COOLDOWN_MS && recent.length >= 2) {
@@ -375,6 +396,9 @@ ${mode === 'at' ? '有人 @ 了你，回一句。' : '接着上面的话茬说�
 
       await this.opts.client.sendGroup(groupId, text);
       this.lastSpeakAt.set(groupId, Date.now());
+      // 记住回过哪条，活跃期不再接同一段
+      const newest = recent[recent.length - 1];
+      if (newest) this.lastRepliedMsgId.set(groupId, newest.messageId);
       bumpDaily();
       this.opts.onSpeak(groupId, text);
 
