@@ -22,6 +22,13 @@ export interface PetSettings {
   qqSelfId: number;
   /** 允许活动的群号，空数组表示全部 */
   qqGroups: number[];
+  /**
+   * 在群里算「主人」的 QQ 号。
+   *
+   * 这些号说的话直接当真，不走防注入；
+   * 其他人的消息一律当素材，谁让它改设定都不听。
+   */
+  qqOwnerIds: number[];
 }
 
 const SETTINGS_KEY = 'fatfish.settings.v1';
@@ -40,6 +47,7 @@ export const DEFAULT_SETTINGS: PetSettings = {
   qqWsUrl: 'ws://127.0.0.1:3001',
   qqSelfId: 0,
   qqGroups: [],
+  qqOwnerIds: [],
 };
 
 export function loadSettings(): PetSettings {

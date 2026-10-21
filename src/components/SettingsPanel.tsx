@@ -269,6 +269,25 @@ export function SettingsPanel({
               />
             </label>
             <label className="field compact">
+              <span>
+                在群里算「主人」的 QQ 号
+                <em className="budget-left">逗号分隔。这些人说的话直接当真，其他人一律防注入</em>
+              </span>
+              <input
+                value={(draft.qqOwnerIds ?? []).join(',')}
+                placeholder="1259164495"
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    qqOwnerIds: e.target.value
+                      .split(',')
+                      .map((x) => Number(x.trim()))
+                      .filter((x) => Number.isFinite(x) && x > 0),
+                  })
+                }
+              />
+            </label>
+            <label className="field compact">
               <span>NapCat 地址</span>
               <input
                 value={draft.qqWsUrl}

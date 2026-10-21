@@ -251,6 +251,7 @@ export default function App() {
       selfId: settings.qqSelfId,
       nickname: settings.biliAtName || '主人',
       allowedGroups: settings.qqGroups ?? [],
+      ownerIds: settings.qqOwnerIds ?? [],
       onBudgetChange: setBudget,
       onSpeak: (_gid, text) => {
         controller.setMood('happy', 2500);
