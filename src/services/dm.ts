@@ -15,6 +15,8 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { PERSONA, parseReply } from './persona';
+import { buildClockBlock, readClock } from './circadian';
+import { buildMoodBlock, loadMood, onReturn } from './mood-state';
 import { UNTRUSTED_NOTICE, looksLikeInjection, wrapUntrusted } from './untrusted';
 import { estimateTokens, recordUsage, remainingTokens, type BudgetState } from './budget';
 import { streamChat } from './llm';
@@ -180,7 +182,15 @@ async function composeDm(
       : '';
 
   const payload = [
-    { role: 'system' as const, content: PERSONA + DM_PERSONA + UNTRUSTED_NOTICE },
+    {
+      role: 'system' as const,
+      content:
+        PERSONA +
+        DM_PERSONA +
+        UNTRUSTED_NOTICE +
+        buildClockBlock(readClock()) +
+        buildMoodBlock(onReturn(loadMood()), false),
+    },
     {
       role: 'user' as const,
       content: `（系统旁白，不是对方说的话）

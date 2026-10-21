@@ -19,6 +19,8 @@ import type { BudgetState } from './budget';
 import { estimateTokens, recordUsage, remainingTokens } from './budget';
 import { streamChat } from './llm';
 import { PERSONA, parseReply } from './persona';
+import { buildClockBlock, readClock } from './circadian';
+import { buildMoodBlock, loadMood, onReturn } from './mood-state';
 import { UNTRUSTED_NOTICE, looksLikeInjection, wrapUntrusted } from './untrusted';
 import type { QqClient, QqMessage } from './qq';
 
@@ -298,7 +300,15 @@ export class GroupWatcher {
     }
 
     const payload = [
-      { role: 'system' as const, content: PERSONA + GROUP_PERSONA + UNTRUSTED_NOTICE },
+      {
+        role: 'system' as const,
+        content:
+          PERSONA +
+          GROUP_PERSONA +
+          UNTRUSTED_NOTICE +
+          buildClockBlock(readClock()) +
+          buildMoodBlock(onReturn(loadMood()), false),
+      },
       {
         role: 'user' as const,
         content: `（系统旁白，不是群里的人说的话）
@@ -359,7 +369,15 @@ ${mode === 'scan' ? '你潜水了半小时，刚翻到这段。' : '你刚在群
     this.busy = true;
     try {
       const payload = [
-        { role: 'system' as const, content: PERSONA + GROUP_PERSONA + UNTRUSTED_NOTICE },
+        {
+          role: 'system' as const,
+          content:
+            PERSONA +
+            GROUP_PERSONA +
+            UNTRUSTED_NOTICE +
+            buildClockBlock(readClock()) +
+            buildMoodBlock(onReturn(loadMood()), false),
+        },
         {
           role: 'user' as const,
           content: `（系统旁白，不是群里的人说的话）
