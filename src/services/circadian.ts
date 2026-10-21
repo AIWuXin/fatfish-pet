@@ -26,11 +26,19 @@ export interface ClockState {
   alertness: number;
   /** 现在几点的自然说法（"晚上十一点"） */
   label: string;
+  /** 完整日期（"10月21日 周三"） */
+  dateLabel: string;
+  /** ISO 形式，供她算"过了几天" */
+  dateISO: string;
   /** 给模型的状态描述 */
   hint: string;
 }
 
 const WEEKDAY_NAMES = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+
+function dateLabelOf(d: Date): string {
+  return `${d.getMonth() + 1}月${d.getDate()}日 ${WEEKDAY_NAMES[d.getDay()]}`;
+}
 
 function hourLabel(h: number): string {
   if (h === 0) return '半夜十二点';
@@ -148,6 +156,8 @@ export function readClock(now: Date = new Date()): ClockState {
     phase,
     alertness: info.alertness,
     label: hourLabel(hour),
+    dateLabel: dateLabelOf(now),
+    dateISO: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`,
     hint: info.hint,
   };
 }
@@ -159,15 +169,18 @@ export function readClock(now: Date = new Date()): ClockState {
  * 免得她每次开口都要报时。
  */
 export function buildClockBlock(clock: ClockState): string {
-  const weekendNote = clock.weekday === 0 || clock.weekday === 6 ? `，${WEEKDAY_NAMES[clock.weekday]}` : '';
   return `
 
-## 现在几点
-${clock.label}${weekendNote}。
+## 现在
+${clock.dateLabel}，${clock.label}。
 ${clock.hint}
 
-注意：不要主动报时，也不要说"现在是几点"这种话。
-这个状态是让你**演出来**的——困了就话短、有精神就多聊两句。
+时间是真的，日期也是真的。平时不用主动报时，但：
+- 他问"现在几点""今天几号""周几" → 照实说
+- 你们约了某天某件事，需要算还剩几天 → 按这个日期算
+- 说"昨天""明天""上周"这类话 → 以这个日期为准，别算错
+
+这个状态主要是让你**演出来**的——困了就话短、有精神就多聊两句。
 他是任何时间来找你你都会回的，只是状态不一样。`;
 }
 
