@@ -14,7 +14,7 @@
  */
 
 import { invoke } from '@tauri-apps/api/core';
-import { PERSONA } from './persona';
+import { PERSONA, parseReply } from './persona';
 import { UNTRUSTED_NOTICE, looksLikeInjection, wrapUntrusted } from './untrusted';
 import { estimateTokens, recordUsage, remainingTokens, type BudgetState } from './budget';
 import { streamChat } from './llm';
@@ -209,7 +209,9 @@ ${wrapUntrusted('私信', last.content, 600)}${quotaNote}
   const spent = usage > 0 ? usage : inputCost + estimateTokens(acc);
   if (spent > 0) opts.onBudgetChange(recordUsage(opts.budget, spent));
 
-  const text = clampText(acc.replace(/^["「]|["」]$/g, '').trim());
+  // 剥掉 [[mood:xxx]] 之类的内部标记，别让对面看到
+  const cleaned = parseReply(acc).text;
+  const text = clampText(cleaned.replace(/^["「]|["」]$/g, '').trim());
   return { text: text || null };
 }
 

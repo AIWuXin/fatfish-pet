@@ -18,7 +18,7 @@ import type { PetSettings } from './settings';
 import type { BudgetState } from './budget';
 import { estimateTokens, recordUsage, remainingTokens } from './budget';
 import { streamChat } from './llm';
-import { PERSONA } from './persona';
+import { PERSONA, parseReply } from './persona';
 import { UNTRUSTED_NOTICE, looksLikeInjection, wrapUntrusted } from './untrusted';
 import type { QqClient, QqMessage } from './qq';
 
@@ -366,7 +366,11 @@ ${mode === 'at' ? '有人 @ 了你，回一句。' : '接着上面的话茬说�
       const spent = usage > 0 ? usage : inputCost + estimateTokens(acc);
       if (spent > 0) this.opts.onBudgetChange(recordUsage(this.opts.getBudget(), spent));
 
-      const text = acc.replace(/^["「]|["」]$/g, '').trim().slice(0, MAX_CHARS);
+      // 走 parseReply 剥掉 [[mood:xxx]] / [[remember:...]] 这类内部标记。
+      // 之前直接发原始输出，群里就会看到「[[mood:happy]]」这种字符串。
+      const parsed = parseReply(acc);
+      const clean = parsed.text.replace(/^["「]|["」]$/g, '').trim();
+      const text = clean.slice(0, MAX_CHARS);
       if (!text) return;
 
       await this.opts.client.sendGroup(groupId, text);

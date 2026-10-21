@@ -115,7 +115,9 @@ export function sanitizeEmotes(text: string, allowed: string[]): string {
 /** 清理模型偶尔会漏进正文的 mood 标记。 */
 export function stripMoodLeak(text: string): string {
   return text
-    .replace(/[[\(（【]?[\s]*mood[\s]*[:：=][\s]*[a-zA-Z_-]+[\]）)】]?/gi, '')
+    // 双括号版本 [[mood:happy]] 也要吃掉，之前只清单括号，群里就会残留 "[]"
+    .replace(/[\[【（(]*[\s]*mood[\s]*[:：=][\s]*[a-zA-Z_-]+[\s]*[\]】）)]*/gi, '')
+    .replace(/^[\s\[\]【】()（）]+|[\s\[\]【】()（）]+$/g, '')
     .replace(/[\s]{2,}/g, ' ')
     .trim();
 }
