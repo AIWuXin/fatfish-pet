@@ -21,6 +21,8 @@ export interface QqMessage {
   nickname: string;
   /** 纯文本内容（已把 at/表情 之类还原成可读形式） */
   text: string;
+  /** 消息里的图片 URL，按出现顺序。模型可以直接读这些图 */
+  images: string[];
   /** 有没有人 @ 她 */
   atMe: boolean;
   atOthers: boolean;
@@ -104,16 +106,9 @@ export class QqClient {
 
     ws.onopen = () => {
       this.connected = true;
-      this.emitStatus(true);
-      // 拉一下自己的昵称，@ 兜底要用
-      void this.call('get_login_info')
-        .then((d) => {
-          const info = d as Record<string, unknown> | null;
-          if (info && typeof info.nickname === 'string') this.selfName = info.nickname;
-        })
-        .catch(() => {
-          /* 拿不到就算了，还有硬编码的兜底 */
-        });
+      // 端口通不等于 QQ 登录了：NapCat 未登录时也会监听 3001。
+      // 必须问一次 get_login_info，拿到有效 QQ 号才算真连上。
+      void this.verifyLogin();
     };
 
     ws.onclose = () => {
@@ -137,6 +132,32 @@ export class QqClient {
       }
       this.dispatch(data as Record<string, unknown>);
     };
+  }
+
+  /**
+   * 用 OneBot 的 get_login_info 确认 QQ 真的登录了。
+   *
+   * 只看端口会误判：NapCat 进程在、二维码还没扫的时候，
+   * WebSocket 照样能连上并推送 lifecycle 事件，
+   * 但 get_login_info 拿不到 user_id。
+   */
+  private async verifyLogin(): Promise<void> {
+    try {
+      const d = await this.call('get_login_info');
+      const info = d as Record<string, unknown> | null;
+      const userId = Number(info?.user_id ?? 0);
+      if (userId > 0) {
+        this.selfName = typeof info?.nickname === 'string' ? info.nickname : '';
+        this.emitStatus(true);
+      } else {
+        this.emitStatus(false, 'QQ 未登录');
+        // 关掉让 onclose 安排重连，扫码成功后下一轮就能连上
+        this.ws?.close();
+      }
+    } catch {
+      this.emitStatus(false, 'QQ 未登录');
+      this.ws?.close();
+    }
   }
 
   private scheduleReconnect(): void {
@@ -205,6 +226,7 @@ export class QqClient {
     let atMe = false;
     let atOthers = false;
     let atUnknown = '';
+    const images: string[] = [];
 
     for (const seg of segments as QqSegment[]) {
       if (!seg || typeof seg !== 'object') continue;
@@ -225,7 +247,15 @@ export class QqClient {
       } else if (seg.type === 'face') {
         text += '[表情]';
       } else if (seg.type === 'image') {
-        text += '[图片]';
+        const d = (seg.data ?? {}) as Record<string, unknown>;
+        // NapCat 一般给 http(s) 的 url；file 可能是本地文件名，模型读不到
+        const url = String(d.url ?? '');
+        if (/^https?:\/\//i.test(url) && !images.includes(url)) {
+          images.push(url);
+          text += `[图片${images.length}]`;
+        } else {
+          text += '[图片]';
+        }
       }
     }
 
@@ -246,6 +276,7 @@ export class QqClient {
       userId: Number(raw.user_id ?? 0),
       nickname: String(sender.card || sender.nickname || '群友'),
       text: text.trim(),
+      images,
       atMe,
       atOthers,
       time: Number(raw.time ?? Math.floor(Date.now() / 1000)) * 1000,
@@ -277,8 +308,17 @@ export class QqClient {
     });
   }
 
-  async sendGroup(groupId: number, text: string): Promise<void> {
-    await this.call('send_group_msg', { group_id: groupId, message: text });
+  async sendGroup(groupId: number, text: string, atUserId?: number): Promise<void> {
+    // 带 at 时用 OneBot 消息段，群里能看出在回谁；
+    // 纯文本调用保持原样，不影响其他场景。
+    const message =
+      atUserId && atUserId > 0
+        ? [
+            { type: 'at', data: { qq: String(atUserId) } },
+            { type: 'text', data: { text: ` ${text}` } },
+          ]
+        : text;
+    await this.call('send_group_msg', { group_id: groupId, message });
   }
 
   async sendPrivate(userId: number, text: string): Promise<void> {

@@ -5,6 +5,81 @@ import type { MemoryItem } from '../services/memory';
 import type { DiaryEntry } from '../services/diary';
 import type { Impression } from '../services/impressions';
 
+/** 把「群号/QQ 号」输入框的文本解析成数组。
+ *  支持半角逗号、全角逗号和空格——用户不该为了填两个群号去猜该用哪种。 */
+function parseIdList(text: string): number[] {
+  return text
+    .split(/[,，\s]+/)
+    .map((x) => Number(x.trim()))
+    .filter((x) => Number.isFinite(x) && x > 0);
+}
+
+/**
+ * 直接问 NapCat 要登录信息。
+ *
+ * 不能看 3001 端口：NapCat 未登录时也会监听端口，
+ * WebSocket 甚至能连上并收到 lifecycle 事件。
+ * 只有 get_login_info 返回了有效 user_id，才算 QQ 真的登录。
+ */
+function checkQqLogin(
+  wsUrl: string,
+  timeoutMs = 2500,
+): Promise<{ loggedIn: boolean; nickname?: string; userId?: number }> {
+  return new Promise((resolve) => {
+    let done = false;
+    let ws: WebSocket | null = null;
+    const finish = (r: { loggedIn: boolean; nickname?: string; userId?: number }) => {
+      if (done) return;
+      done = true;
+      try {
+        ws?.close();
+      } catch {
+        /* ignore */
+      }
+      resolve(r);
+    };
+
+    const timer = window.setTimeout(() => finish({ loggedIn: false }), timeoutMs);
+    try {
+      ws = new WebSocket(wsUrl);
+    } catch {
+      window.clearTimeout(timer);
+      finish({ loggedIn: false });
+      return;
+    }
+
+    ws.onopen = () => {
+      ws?.send(JSON.stringify({ action: 'get_login_info', params: {}, echo: 1 }));
+    };
+    ws.onmessage = (ev) => {
+      try {
+        const msg = JSON.parse(String(ev.data)) as {
+          echo?: number;
+          data?: { user_id?: number; nickname?: string };
+        };
+        if (msg.echo !== 1) return;
+        window.clearTimeout(timer);
+        const userId = Number(msg.data?.user_id ?? 0);
+        finish({
+          loggedIn: userId > 0,
+          userId: userId > 0 ? userId : undefined,
+          nickname: typeof msg.data?.nickname === 'string' ? msg.data.nickname : undefined,
+        });
+      } catch {
+        /* 非 JSON 消息忽略 */
+      }
+    };
+    ws.onerror = () => {
+      window.clearTimeout(timer);
+      finish({ loggedIn: false });
+    };
+    ws.onclose = () => {
+      window.clearTimeout(timer);
+      finish({ loggedIn: false });
+    };
+  });
+}
+
 interface SettingsPanelProps {
   settings: PetSettings;
   memories: MemoryItem[];
@@ -41,6 +116,11 @@ export function SettingsPanel({
   onBiliLogout,
 }: SettingsPanelProps) {
   const [draft, setDraft] = useState(settings);
+  // 这两个输入框必须保留用户正在输入的原始文本。
+  // 直接用 qqGroups.join(',') 做 value 的话，输入逗号的瞬间
+  // 空串会被 Number('') 变成 0 再过滤掉，逗号永远打不进去。
+  const [groupsText, setGroupsText] = useState((settings.qqGroups ?? []).join(','));
+  const [ownersText, setOwnersText] = useState((settings.qqOwnerIds ?? []).join(','));
   const [importNote, setImportNote] = useState<string | null>(null);
   // QQ 登录：打开后每 3 秒刷一次二维码，登录成功（WS 端口通了）就收起来
   const [qrOpen, setQrOpen] = useState(false);
@@ -49,14 +129,26 @@ export function SettingsPanel({
   const [qqAlive, setQqAlive] = useState(false);
 
   useEffect(() => {
-    if (!qrOpen) return;
     let stop = false;
+
+    const check = async (): Promise<boolean> => {
+      const login = await checkQqLogin(draft.qqWsUrl || 'ws://127.0.0.1:3001');
+      if (!stop) setQqAlive(login.loggedIn);
+      return login.loggedIn;
+    };
+
+    // 面板一打开就先查一次，别默认显示「未登录」
+    void check();
+    if (!qrOpen) {
+      return () => {
+        stop = true;
+      };
+    }
+
     const load = async () => {
+      const loggedIn = await check();
+      if (stop || loggedIn) return;
       try {
-        const a = await invoke<{ alive: boolean }>('napcat_alive', { port: 3001 });
-        if (stop) return;
-        setQqAlive(a.alive);
-        if (a.alive) return; // 已经登录了，不用再显示码
         const r = await invoke<{ dataUrl: string; mtime: number }>('napcat_qrcode');
         if (!stop) {
           setQr(r);
@@ -66,13 +158,14 @@ export function SettingsPanel({
         if (!stop) setQrErr(e instanceof Error ? e.message : String(e));
       }
     };
+
     void load();
     const t = window.setInterval(load, 3000);
     return () => {
       stop = true;
       window.clearInterval(t);
     };
-  }, [qrOpen]);
+  }, [qrOpen, draft.qqWsUrl]);
 
   const handleImport = async () => {
     try {
@@ -245,46 +338,38 @@ export function SettingsPanel({
               <span>她的 QQ 号</span>
               <input
                 value={draft.qqSelfId || ''}
-                placeholder="3576356769"
+                placeholder="100000000"
                 onChange={(e) => setDraft({ ...draft, qqSelfId: Number(e.target.value) || 0 })}
               />
             </label>
             <label className="field compact">
               <span>
                 允许的群号
-                <em className="budget-left">逗号分隔，留空表示所有群</em>
+                <em className="budget-left">逗号分隔（全角半角都行），留空表示所有群</em>
               </span>
               <input
-                value={(draft.qqGroups ?? []).join(',')}
-                placeholder="575138626"
-                onChange={(e) =>
-                  setDraft({
-                    ...draft,
-                    qqGroups: e.target.value
-                      .split(',')
-                      .map((x) => Number(x.trim()))
-                      .filter((x) => Number.isFinite(x) && x > 0),
-                  })
-                }
+                value={groupsText}
+                placeholder="123456789, 987654321"
+                onChange={(e) => {
+                  const text = e.target.value;
+                  setGroupsText(text);
+                  setDraft((d) => ({ ...d, qqGroups: parseIdList(text) }));
+                }}
               />
             </label>
             <label className="field compact">
               <span>
                 在群里算「主人」的 QQ 号
-                <em className="budget-left">逗号分隔。这些人说的话直接当真，其他人一律防注入</em>
+                <em className="budget-left">逗号分隔，可填多个。这些人说的话直接当真，其他人一律防注入</em>
               </span>
               <input
-                value={(draft.qqOwnerIds ?? []).join(',')}
-                placeholder="1259164495"
-                onChange={(e) =>
-                  setDraft({
-                    ...draft,
-                    qqOwnerIds: e.target.value
-                      .split(',')
-                      .map((x) => Number(x.trim()))
-                      .filter((x) => Number.isFinite(x) && x > 0),
-                  })
-                }
+                value={ownersText}
+                placeholder="100000001, 100000002"
+                onChange={(e) => {
+                  const text = e.target.value;
+                  setOwnersText(text);
+                  setDraft((d) => ({ ...d, qqOwnerIds: parseIdList(text) }));
+                }}
               />
             </label>
             <label className="field compact">

@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-import { streamChat, type ChatMessage } from '../services/llm';
+import { messageText, streamChat, type ChatMessage } from '../services/llm';
 import { parseReply, stripPartialMarkers } from '../services/persona';
 import type { MemoryItem } from '../services/memory';
 import type { DiaryEntry } from '../services/diary';
@@ -42,7 +42,7 @@ const COMPACT_MAX_MESSAGES = 240;
 const KEEP_RECENT_MIN = 16;
 
 function historyTokens(list: ChatMessage[]): number {
-  return list.reduce((sum, m) => sum + estimateTokens(m.content) + 4, 0);
+  return list.reduce((sum, m) => sum + estimateTokens(messageText(m.content)) + 4, 0);
 }
 const HISTORY_KEY = 'fatfish.chat.history.v1';
 
@@ -65,7 +65,7 @@ function saveHistory(list: ChatMessage[]): void {
     let total = 0;
     let start = list.length;
     for (let i = list.length - 1; i >= 0; i--) {
-      const cost = estimateTokens(list[i].content) + 4;
+      const cost = estimateTokens(messageText(list[i].content)) + 4;
       if (total + cost > PERSIST_TOKEN_CAP) break;
       total += cost;
       start = i;
@@ -104,7 +104,7 @@ export interface ChatResult {
 }
 
 function promptTokensOf(messages: ChatMessage[]): number {
-  return messages.reduce((sum, m) => sum + estimateTokens(m.content) + 4, 0);
+  return messages.reduce((sum, m) => sum + estimateTokens(messageText(m.content)) + 4, 0);
 }
 
 export function usePetChat({
@@ -207,7 +207,7 @@ export function usePetChat({
     let keep = 0;
     let cut = hist.length;
     while (cut > 0 && hist.length - cut < COMPACT_MAX_MESSAGES) {
-      const cost = estimateTokens(hist[cut - 1].content) + 4;
+      const cost = estimateTokens(messageText(hist[cut - 1].content)) + 4;
       if (keep + cost > KEEP_TOKEN_TARGET && hist.length - cut >= KEEP_RECENT_MIN) break;
       keep += cost;
       cut -= 1;

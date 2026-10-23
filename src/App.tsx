@@ -22,8 +22,9 @@ import { handleReplies } from './services/social';
 import { dmLeft, handleDms, loadQuota } from './services/dm';
 import { QqClient } from './services/qq';
 import { GroupWatcher } from './services/qq-group';
-import { addChatEvent, loadChatEvents, type ChatEvent } from './services/recall';
+import { addChatEvent, loadChatEvents, userUtterances, type ChatEvent } from './services/recall';
 import { loadImpressions, reflect, removeImpression, type Impression } from './services/impressions';
+import { extractFacts } from './services/memory-extract';
 
 const MODEL_URL = '/live2d/models/ds-whale-girl/c_0120.model3.json';
 
@@ -214,6 +215,8 @@ export default function App() {
   // 用 ref 兜住随时会变的设置与预算，避免它们进 effect 依赖导致连接抖动
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
+  const diaryRef = useRef(diary);
+  diaryRef.current = diary;
   const budgetRef = useRef(budget);
   budgetRef.current = budget;
   const qqRef = useRef<QqClient | null>(null);
@@ -248,6 +251,7 @@ export default function App() {
       client,
       getSettings: () => settingsRef.current,
       getBudget: () => budgetRef.current,
+      getDiary: () => diaryRef.current,
       selfId: settings.qqSelfId,
       nickname: settings.biliAtName || '主人',
       allowedGroups: settings.qqGroups ?? [],
@@ -678,7 +682,56 @@ export default function App() {
     [],
   );
 
-  // 反思：启动 3 分钟后看一次，之后每 3 小时看一次（真的跑与否由 6 小时节流决定）
+  /**
+   * 每 10 条他的原话主动提取一次长期事实。
+   *
+   * 不再只靠模型在回复末尾自觉输出 [[remember:...]]——
+   * 它经常不提，事实就一直是空的。
+   */
+  const extractRef = useRef({ chatEvents, settings, budget, memories });
+  extractRef.current = { chatEvents, settings, budget, memories };
+
+  const runExtractFacts = useCallback(async () => {
+    const cur = extractRef.current;
+    if (!cur.settings.apiKey) return null;
+    const r = await extractFacts({
+      config: cur.settings,
+      budget: cur.budget,
+      onBudgetChange: setBudget,
+      chatEvents: cur.chatEvents,
+      existing: cur.memories.map((m) => m.content),
+    });
+    if (r.facts.length > 0) {
+      let list = loadMemories();
+      for (const f of r.facts) list = addMemory(f);
+      setMemories(list);
+    }
+    return r;
+  }, []);
+
+  const lastExtractCount = useRef(userUtterances(chatEvents).length);
+  const lastReflectCount = useRef(userUtterances(chatEvents).length);
+
+  useEffect(() => {
+    const count = userUtterances(chatEvents).length;
+    if (count < 6) return;
+
+    // 事实：每多 10 条原话提取一次，30 分钟内不重复烧钱
+    if (count - lastExtractCount.current >= 10) {
+      const last = Number(localStorage.getItem('fatfish.memory.extract.at') || 0);
+      if (Date.now() - last >= 30 * 60_000) {
+        lastExtractCount.current = count;
+        localStorage.setItem('fatfish.memory.extract.at', String(Date.now()));
+        void runExtractFacts();
+      }
+    }
+
+    // 印象：每多 20 条原话触发一次反思，仍然受 6 小时节流限制
+    if (count - lastReflectCount.current >= 20) {
+      lastReflectCount.current = count;
+      void runReflect(false);
+    }
+  }, [chatEvents, runExtractFacts, runReflect]);
   useEffect(() => {
     if (!settings.apiKey) return;
     const first = window.setTimeout(() => void runReflect(false), 3 * 60_000);

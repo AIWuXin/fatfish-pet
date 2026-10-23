@@ -1,4 +1,4 @@
-import { streamChat, type ChatMessage } from './llm';
+import { messageText, streamChat, type ChatMessage } from './llm';
 import { estimateTokens, recordUsage, remainingTokens, type BudgetState } from './budget';
 import type { PetSettings } from './settings';
 import type { DiaryEntry } from './diary';
@@ -238,7 +238,7 @@ async function collect(
   opts: BrowseOptions,
   signal?: AbortSignal,
 ): Promise<{ text: string; starved: boolean }> {
-  const inputCost = payload.reduce((sum, m) => sum + estimateTokens(m.content) + 4, 0);
+  const inputCost = payload.reduce((sum, m) => sum + estimateTokens(messageText(m.content)) + 4, 0);
   const remaining = remainingTokens(opts.budget);
   if (remaining < inputCost + 200) return { text: '', starved: true };
 

@@ -41,7 +41,7 @@ export const DEFAULT_SETTINGS: PetSettings = {
   proactive: true,
   bilibili: true,
   dailyWanTokens: 1000,
-  biliAtName: '喜滋滋小姐的狗',
+  biliAtName: '',
   maxCommentsPerDay: 20,
   qq: false,
   qqWsUrl: 'ws://127.0.0.1:3001',

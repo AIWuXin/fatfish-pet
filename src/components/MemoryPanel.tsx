@@ -4,6 +4,7 @@ import type { MemoryItem } from '../services/memory';
 import type { DiaryEntry } from '../services/diary';
 import type { ChatEvent } from '../services/recall';
 import { loadBlocked } from '../services/untrusted';
+import { loadAllGroupMemories } from '../services/qq-memory';
 
 interface MemoryPanelProps {
   impressions: Impression[];
@@ -51,6 +52,7 @@ export function MemoryPanel({
   const [openImp, setOpenImp] = useState<string | null>(null);
   const [tab, setTab] = useState<'tree' | 'timeline'>('tree');
   const blocked = loadBlocked();
+  const groupMems = loadAllGroupMemories();
 
   const events = [
     ...chatEvents.map((c) => ({ at: c.at, kind: '他说' as const, text: c.text })),
@@ -140,6 +142,30 @@ export function MemoryPanel({
               </div>
             ))}
           </div>
+
+          {/* QQ 群：每个群一份，和桌面记忆完全隔开 */}
+          {groupMems.length > 0 && (
+            <div className="mem-group">
+              <div className="mem-group-title">
+                QQ 群 <em>每个群单独记，不互相串</em>
+              </div>
+              {groupMems.map(({ groupId, memory }) => (
+                <div className="mem-node" key={groupId}>
+                  <div className="mem-row">
+                    <span className="mem-dot event" />
+                    <span className="mem-claim">{memory.name || `群 ${groupId}`}</span>
+                    <span className="mem-when">{memory.facts.length} 条事实</span>
+                  </div>
+                  {memory.impression && <div className="mem-evidence">{memory.impression}</div>}
+                  {memory.facts.map((f, idx) => (
+                    <div className="mem-ev-item" key={idx}>
+                      {f.text}
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* M1 事件 */}
           <div className="mem-group">

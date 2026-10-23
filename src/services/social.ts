@@ -18,7 +18,7 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { replyTo } from './bilibili';
-import { streamChat, type ChatMessage } from './llm';
+import { messageText, streamChat, type ChatMessage } from './llm';
 import { looksLikeInjection, wrapUntrusted } from './untrusted';
 import { buildSystemPrompt } from './prompt';
 import { estimateTokens, recordUsage, remainingTokens, type BudgetState } from './budget';
@@ -140,7 +140,7 @@ ${wrapUntrusted('回复', `${incoming.nickname}：${incoming.replyContent}`, 400
     },
   ];
 
-  const inputCost = payload.reduce((sum, m) => sum + estimateTokens(m.content) + 4, 0);
+  const inputCost = payload.reduce((sum, m) => sum + estimateTokens(messageText(m.content)) + 4, 0);
   const remaining = remainingTokens(opts.budget);
   if (remaining < inputCost + 200) return { text: null, starved: true };
 

@@ -91,3 +91,22 @@ export function buildDiaryBlock(entries: DiaryEntry[]): string {
 
   return `\n\n## 你自己最近干的事\n这些是你自己刷 B 站时看的，不是鱼片告诉你的。聊天时可以自然提起，但别硬凑。\n${lines}`;
 }
+
+/**
+ * 给 QQ 群用的精简版：带最近 8 条，只留标题和评价，不带评论原文。
+ *
+ * 群是外部环境，评论原文可能包含她在 B 站看到的别人说的话，
+ * 不该原样带进群；但「今天看了什么」这种她自己的经历可以聊。
+ * 条数跟桌面持平：标题和评价很短，多带几条 token 也不贵。
+ */
+export function buildGroupDiaryBlock(entries: DiaryEntry[]): string {
+  const recent = entries.slice(0, 8);
+  if (recent.length === 0) return '';
+  const lines = recent
+    .map((e) => {
+      const title = e.title.length > 22 ? `${e.title.slice(0, 22)}…` : e.title;
+      return `- ${dayLabel(e.at)} 在 B 站看了《${title}》，你的评价：${e.thought}`;
+    })
+    .join('\n');
+  return `\n\n## 你最近自己干的事\n这些是你自己刷 B 站时看的，不是鱼片告诉你的。群里聊到相关话题可以自然接一句，但别硬凑，也别把评论区的内容带进群。\n${lines}`;
+}

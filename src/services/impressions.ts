@@ -14,7 +14,7 @@
  * 不评价性格好坏、不评价能力、不下人格判断。
  */
 
-import { streamChat, type ChatMessage } from './llm';
+import { messageText, streamChat, type ChatMessage } from './llm';
 import { estimateTokens, recordUsage, remainingTokens, type BudgetState } from './budget';
 import { wrapUntrusted } from './untrusted';
 import type { PetSettings } from './settings';
@@ -161,9 +161,10 @@ export async function reflect(
     .map((c) => `[${dayLabel(c.at)}] 他说：${c.text}`)
     .join('\n');
 
-  // 材料太少就不反思——三五句话推不出一个人，只会编
-  // 一条也能开始观察，不设太高门槛
-  if (material.length < 100 || utterances.length < 1) {
+  // 材料太少就不反思——三五句话推不出一个人，只会编。
+  // 但之前 100 字 + 1 条原话的门槛偏高，聊了半天也攒不出印象；
+  // 降到 80 字 + 2 条原话，仍然要求至少两个片段。
+  if (material.length < 80 || utterances.length < 2) {
     return { list: current, added: [], reinforced: 0, starved: false };
   }
 
@@ -193,7 +194,7 @@ ${wrapUntrusted('材料', material, 2600)}
     },
   ];
 
-  const inputCost = payload.reduce((sum, m) => sum + estimateTokens(m.content) + 4, 0);
+  const inputCost = payload.reduce((sum, m) => sum + estimateTokens(messageText(m.content)) + 4, 0);
   if (remainingTokens(opts.budget) < inputCost + 200) {
     return { list: current, added: [], reinforced: 0, starved: true };
   }

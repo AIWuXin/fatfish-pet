@@ -40,9 +40,10 @@ const SCENE_DEFAULTS: Record<Scene, {
   chat: { clock: true, mood: true, identity: true, untrusted: false, memory: true, diary: true },
   /** 她主动开口：不需要召回和印象，但要知道现在几点、心情如何 */
   proactive: { clock: true, mood: true, identity: true, untrusted: false, memory: true, diary: true },
-  /** QQ 群：外部环境，要有隔离声明；记忆只给日记，别把私聊内容带出去 */
+  /** QQ 群：外部环境，要有隔离声明；不注入任何私有记忆，也不给日记——
+   *  群里说的话不该把桌面上的内容带出去 */
   group: { clock: true, mood: true, identity: true, untrusted: true, memory: false, diary: false },
-  /** B 站私信：同上 */
+  /** B 站私信：同上。私信与群聊之间也不共享任何状态 */
   dm: { clock: true, mood: true, identity: true, untrusted: true, memory: false, diary: false },
   /** 逛 B 站挑视频：看的是公开内容，带日记知道最近看过什么 */
   browse: { clock: true, mood: false, identity: false, untrusted: true, memory: false, diary: true },
